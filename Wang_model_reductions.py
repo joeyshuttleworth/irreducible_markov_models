@@ -13,29 +13,26 @@ from markov_builder.example_models import construct_mazhari_chain
 from markovmodels import MarkovModel
 import myokit as mk
 
+
+holding_potential = -80.0
+
 def main():
     arg_parser = argparse.ArgumentParser()
 
     # Setup protocol
     mk_protocol = mk.load_protocol('simplified-staircase.mmt')
     protocol = []
-    # for event in mk_protocol.events():
-    #     duration = event.duration()
-    #     end_t = mk_protocol.characteristic_time()
-    #     start_t = end_t - duration
-    #     level = event.level()
-    #     protocol.append((start_t, end_t, level, level))
+    t_cur = 0
+    for event in mk_protocol.events():
+        duration = event.duration()
+        start_t = t_cur
+        end_t = start_t + duration
+        t_cur = end_t
+        level = event.level()
+        protocol.append((start_t, end_t, level, level))
 
-    # protocol = np.vstack(protocol).astype(np.float64)
-    # protocol[:-1, 1] = protocol[1:, 0].copy()
-    # print(protocol)
-
-    protocol = np.array([[0, 1000.0, -80.0, -80.0],
-                         [1000.0, 2000.0, 40.0, 40.0],
-                         [2000.0, 3000.0, 0.0, 0.0],
-                         [3000.0, 4000.0, -80.0, -80.0]])
-
-    holding_potential = -80.0
+    protocol = np.vstack(protocol).astype(np.float64)
+    print(protocol)
 
     @njit
     def protocol_func(t, offset=0, protocol_description=protocol):
