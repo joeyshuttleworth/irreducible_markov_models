@@ -18,6 +18,7 @@ holding_potential = -80.0
 
 def main():
     arg_parser = argparse.ArgumentParser()
+    arg_parser.add_argument("--model", default='Wang')
 
     # Setup protocol
     mk_protocol = mk.load_protocol('simplified-staircase.mmt')
@@ -47,11 +48,63 @@ def main():
                 else:
                     return protocol[i][3]
 
-
-
     global args
     args = arg_parser.parse_args()
-    mc = construct_wang_chain()
+    if args.model == 'Wang':
+        mc = construct_wang_chain()
+    elif args.model == 'Mazhari':
+        mc = construct_mazhari_chain()
+    elif args.model[:5] == 'model':
+        model_no = int(args.model[5:])
+        from markov_builder.models.thirty_models import (
+            model_00,
+            model_01,
+            model_02,
+            model_03,
+            model_04,
+            model_05,
+            model_06,
+            model_07,
+            model_08,
+            model_09,
+            model_10,
+            model_11,
+            model_12,
+            model_13,
+            model_14,
+            model_20,
+            model_30,
+        )
+
+        # Missing models here
+        model_15 = None
+        model_16 = None
+        model_17 = None
+        model_18 = None
+        model_19 = None
+        model_20 = None
+        model_21 = None
+        model_22 = None
+        model_23 = None
+        model_24 = None
+        model_25 = None
+        model_26 = None
+        model_27 = None
+        model_28 = None
+        model_29 = None
+
+        thirty_models = [
+            model_00, model_01, model_02, model_03, model_04,
+            model_05, model_06, model_07, model_08, model_09, model_10,
+            model_11, model_12, model_13, model_14, model_15, model_16, model_17,
+            model_18, model_19, model_20, model_21, model_22, model_23, model_24, model_25,
+            model_26, model_27, model_28, model_29, model_30
+        ]
+        mc = thirty_models[model_no]()
+
+        if not mc.is_connected():
+            raise NotImplementedError
+
     states = mc.get_states()
 
     parameter_labels = [key
@@ -61,7 +114,7 @@ def main():
     label_order = states
     state_labels, Q = mc.get_transition_matrix(label_order=label_order)
 
-    tols = 10.0**np.array(list(range(-12, -2)))
+    tols = 10.0**np.array(list(range(-8, -2)))
 
     tend = np.array(protocol)[-1, 1]
     ts = np.linspace(0, int(tend), int(tend) + 1)
@@ -102,11 +155,13 @@ def main():
         rates = rates_func(default_parameters, v).flatten()
         return Q_func(rates, v)
 
-    voltages = np.unique(protocol[2:, :])
+    voltages = np.unique(protocol[:, 2:])
 
     x0 = np.full(Q.shape[0], 1.0)
 
     initial_score = np.nan
+
+    c = 0
     while not np.isfinite(initial_score):
         x0 = np.full(Q.shape[0], 1.0)
         x0 = np.random.normal(0, 1, Q.shape[0])
@@ -145,7 +200,8 @@ def main():
 
     ortho_basis = construct_orthonormal_basis(resvec)
     N = Q.shape[0]
-    T = np.vstack((ortho_basis[:-1, :].astype(np.float64), np.full((1, N), 1.0)))
+    T = ortho_basis.copy()
+
     print(T, np.linalg.det(T), np.linalg.cond(T))
 
     y0 = np.full(len(mm.get_state_labels()) + 1, 1.0)
@@ -157,7 +213,7 @@ def main():
     for tol in tols:
         count, ivp_res = count_solver_steps(mm, protocol, ts, tol=tol, y0=y0)
         steps_taken_vec.append(count)
-        ivp_res = np.hstack([ivp_res, np.full((ivp_res.shape[0], 1), 1.0)])
+        ivp_res = np.hstack([ivp_res, np.full((ivp_res.shape[0], 1), 1.0/np.sqrt(N))])
         ivp_res = np.linalg.solve(T, ivp_res.T).T
         rmse = np.sqrt(np.mean((ivp_res - ref_res)**2))
         rmse_vec.append(rmse)
@@ -165,9 +221,6 @@ def main():
         plt.plot(ts, ivp_res-ref_res)
         plt.yscale('log')
         plt.savefig("log_error_plot")
-
-    print(np.array(rmse_vec)[:, None])
-    print(np.array(steps_taken_vec)[:, None])
 
     rmse_vec1 = np.array(rmse_vec.copy())
     steps_taken_vec1 = np.array(steps_taken_vec)
@@ -207,24 +260,60 @@ def main():
                             missing_state_res, axis=1)
             rmse = np.sqrt(np.mean((res - ref_res)**2))
             rmses.append(rmse)
+            plt.clf()
+            plt.plot(ts, res)
+            plt.savefig(f"{eliminated_state}_{tol:1e}_sol.pdf")
+
+    rmses_full = []
+    steps_taken_vec_full = []
+
+    for tol in tols:
+        labels = states
+        A, B = mc.eliminate_state_from_transition_matrix(labels[:-1],
+                                                        use_parameters=True)
+
+        GKr_index = len(parameter_labels) - 1
+        default_parameters = np.array([val
+                                    for key, val in mc.default_values.items()
+                                    if (str(key) not in ['E_Kr', 'E_rev', 'V'] and val is not None)])
+
+        symbols = {}
+        symbols['v'] = sp.sympify('V')
+        symbols['p'] = sp.Matrix([sp.sympify(p) for p in parameter_labels])
+        symbols['y'] = sp.Matrix([mc.get_state_symbol(s)
+                                    for s in labels])
+        mm = MarkovModel(symbols, A, B, mc.rate_expressions,
+                        voltage=protocol_func,
+                        default_parameters=default_parameters,
+                        Q=Q, name=mc.name,
+                        parameter_labels=parameter_labels,
+                        GKr_index=GKr_index,
+                        E_rev=-80.0)
+        mm.protocol_description = protocol
+
+        steps_taken, res = count_solver_steps(mm, protocol, ts, tol=tol, use_Q=True)
+        steps_taken_vec_full.append(steps_taken)
+
+        rmse = np.sqrt(np.mean((res - ref_res)**2))
+        rmses_full.append(rmse)
 
     steps_taken_vec = np.array(steps_taken_vec).reshape(len(tols), -1)
     rmses = np.array(rmses).reshape(len(tols), -1)
 
-    print(steps_taken_vec, rmses)
+    rmses = np.hstack([rmses, rmse_vec1[:, None], np.array(rmses_full)[:, None]])
+    steps_taken_vec = np.hstack([steps_taken_vec, steps_taken_vec1[:, None],
+                                 np.array(steps_taken_vec_full)[:, None]])
 
-    rmses = np.hstack([rmses, rmse_vec1[:, None]])
-    steps_taken_vec = np.hstack([steps_taken_vec, steps_taken_vec1[:, None]])
-
+    print(rmses, steps_taken_vec)
     plt.clf()
-    plt.plot(steps_taken_vec, rmses, label=[s for s in state_labels] + ['optimised'])
+    plt.plot(steps_taken_vec, rmses, label=[s for s in state_labels] + ['optimised', 'full'])
     plt.yscale('log')
     # plt.xscale('log')
     plt.legend()
 
     plt.savefig("reduction_comparison")
 
-def get_reference_solution(mc, protocol, ts, voltage_func, tol=1e-12):
+def get_reference_solution(mc, protocol, ts, voltage_func, tol=1e-10):
     # start with equal proportion of channels in each state
     state_labels, Q = mc.get_transition_matrix()
     y0 = np.full(Q.shape[0], 1.0)
@@ -273,7 +362,6 @@ def get_reference_solution(mc, protocol, ts, voltage_func, tol=1e-12):
 
         y = solve_ivp(f_deriv, (tstart, tend), y0, args=(p,), dense_output=True,
                       atol=tol, rtol=tol, method='BDF', jac=jac_func)
-
         _res = y.sol(_ts)
         y0 = _res[:, -1].flatten()
         res.append(_res[:, :-1])
@@ -284,18 +372,23 @@ def get_reference_solution(mc, protocol, ts, voltage_func, tol=1e-12):
     return res
 
 
-def count_solver_steps(mm, protocol, ts, tol=1e-3, y0=None):
+def count_solver_steps(mm, protocol, ts, tol=1e-3, y0=None, use_Q=False):
     # start with equal proportion of channels in each state
 
     inputs = (mm.y, mm.p, mm.v)
     A_mat = mm.A.subs(mm.rates_dict)
     A_func = njit(sp.lambdify(inputs, mm.A.subs(mm.rates_dict)))
 
-    if y0 is None:
-        y0 = np.full(len(mm.get_state_labels()), 1.0)
-        y0 = y0 / (len(y0) + 1.0)
+    Q_mat = mm.Q.subs(mm.rates_dict)
+    Q_func = njit(sp.lambdify(inputs, mm.Q.subs(mm.rates_dict)))
 
-    rhs_func = mm.get_rhs_func()
+    if y0 is None:
+        y0 = np.full(len(mm.y), 1.0) / Q_mat.shape[0]
+
+    if use_Q:
+        rhs_func = njit(sp.lambdify(inputs, (mm.Q.T @ mm.y).subs(mm.rates_dict)))
+    else:
+        rhs_func = mm.get_rhs_func()
 
     voltage_func = mm.voltage
     def f_deriv(t, y, p):
@@ -308,7 +401,10 @@ def count_solver_steps(mm, protocol, ts, tol=1e-3, y0=None):
         offset = p[-1]
         p = p[:-1].copy()
         v = voltage_func(t, offset=offset)
-        return A_func(y, p, v)
+        if use_Q:
+            return Q_func(y, p, v)
+        else:
+            return A_func(y, p, v)
 
     # Add offset parameter
     p = np.append(mm.get_default_parameters(), 0.0)
@@ -340,11 +436,11 @@ def general_transform_with_reduction_vec(Q, e1):
     N = Q.shape[0]
 
     ortho_basis = construct_orthonormal_basis(e1)
-    T = np.vstack((ortho_basis[:-1, :].astype(np.float64), np.full((1, N), 1.0)))
+    T = ortho_basis.copy()
 
     W = T @ Q.T @ np.linalg.inv(T)
     C = W[:-1, :-1]
-    d = 1 * W[:-1, -1]
+    d = (1/np.sqrt(N)) * W[:-1, -1]
 
     return C, d
 
@@ -357,7 +453,7 @@ def opt_func(x, Q_func, voltages):
     conds = np.empty(len(voltages))
 
     T = construct_orthonormal_basis(x)
-    T[-1, :] = 1.0
+    T[-1, :] = 1 / np.sqrt(len(x))
 
     norm_type = 2
     for i, v in enumerate(voltages):
@@ -371,7 +467,7 @@ def opt_func(x, Q_func, voltages):
 
         conds[i] = np.linalg.cond(C, p=norm_type)
 
-    return np.log10(np.mean(conds) * np.linalg.cond(T, p=norm_type))
+    return np.log10(np.mean(conds))
 
 
 def construct_orthonormal_basis(v1):
@@ -379,11 +475,13 @@ def construct_orthonormal_basis(v1):
     n = v1.shape[0]
 
     basis = np.full((n, n), 0.0)
-    basis[0, :] = v1
+    basis[0, :] = np.full(n, 1/np.sqrt(n))
+    # basis[0, :] = 0.0
+    basis[1, :] = v1
 
     ones = np.eye(n)
 
-    c = 1
+    c = 2
     for i in range(n):
         if c >= n:
             break
@@ -399,7 +497,7 @@ def construct_orthonormal_basis(v1):
 
     ret_val = basis.copy()
     ret_val[:-1, :] = basis[1:, :]
-    ret_val[-1, :] = basis[0, :]
+    ret_val[-1, :] = 1/np.sqrt(n)
     return ret_val
 
 
