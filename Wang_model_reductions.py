@@ -47,6 +47,8 @@ def main():
                 else:
                     return protocol[i][3]
 
+
+
     global args
     args = arg_parser.parse_args()
     mc = construct_wang_chain()
@@ -59,12 +61,10 @@ def main():
     label_order = states
     state_labels, Q = mc.get_transition_matrix(label_order=label_order)
 
-    steps_taken_vec = []
-
     tols = 10.0**np.array(list(range(-12, -2)))
 
-    tend = protocol[-1, 1]
-    ts = np.linspace(0, int(tend), int(tend/100))
+    tend = np.array(protocol)[-1, 1]
+    ts = np.linspace(0, int(tend), int(tend) + 1)
 
     ref_res = get_reference_solution(mc, protocol, ts, protocol_func)
 
@@ -102,34 +102,36 @@ def main():
         rates = rates_func(default_parameters, v).flatten()
         return Q_func(rates, v)
 
-    voltages = np.unique(protocol[2, :])
+    voltages = np.unique(protocol[2:, :])
 
     x0 = np.full(Q.shape[0], 1.0)
-    x0 = np.random.normal(0, 1, Q.shape[0])
-    x0 = x0 / np.linalg.norm(x0)
 
-    x0 = np.zeros(Q.shape[0])
-    x0[-1] = 1
-
-    # initial_score = np.nan
-    # while not np.isfinite(initial_score):
-    #     x0 = np.full(Q.shape[0], 1.0)
-    #     x0 = np.random.normal(0, 1, Q.shape[0])
-    #     x0 = x0 / np.linalg.norm(x0)
-
-    initial_score = opt_func(x0, _Q_func, voltages)
+    initial_score = np.nan
+    while not np.isfinite(initial_score):
+        x0 = np.full(Q.shape[0], 1.0)
+        x0 = np.random.normal(0, 1, Q.shape[0])
+        x0 = x0 / np.linalg.norm(x0, 2)
+        initial_score = opt_func(x0, _Q_func, voltages)
 
     # Run the optimization
-    sigma = 20.0
+    sigma = 1.0
     es = cma.CMAEvolutionStrategy(x0, sigma, {'maxiter': 1_000_000,
-                                              'popsize': 20})
+                                              'tolstagnation': 5000,
+                                              'tolfacupx': 1_000_000_000,
+                                              'popsize': 20,
+                                              'tolflatfitness': 100})
 
     _opt_func = lambda x: opt_func(x, _Q_func, voltages)
+
+    # This is a stochstic optimiser so the results are random.
+    # There's a chance that it fails to find a good vector
+    # [-0.01116938 -0.01036687 -0.71767416 -0.01100285  0.69612535]
+    # is an example of a vector which works well
     es.optimize(_opt_func)
     print(es.stop())
 
     resvec = es.result.xbest
-    resvec /= np.linalg.norm(resvec)
+    resvec /= np.linalg.norm(resvec, 2)
     print(resvec)
 
     C, d = general_transform_with_reduction_vec(Q, resvec)
@@ -149,20 +151,29 @@ def main():
     y0 = np.full(len(mm.get_state_labels()) + 1, 1.0)
     y0 = y0 / (len(y0))
     y0 = (T @ y0).flatten()[:-1]
-    count, res = count_solver_steps(mm, protocol, ts, tol=1e-6, y0=y0)
 
-    res = np.hstack([res, np.full((res.shape[0], 1), 1.0)])
-    res = np.linalg.solve(T, res.T).T
+    rmse_vec = []
+    steps_taken_vec = []
+    for tol in tols:
+        count, ivp_res = count_solver_steps(mm, protocol, ts, tol=tol, y0=y0)
+        steps_taken_vec.append(count)
+        ivp_res = np.hstack([ivp_res, np.full((ivp_res.shape[0], 1), 1.0)])
+        ivp_res = np.linalg.solve(T, ivp_res.T).T
+        rmse = np.sqrt(np.mean((ivp_res - ref_res)**2))
+        rmse_vec.append(rmse)
+        plt.clf()
+        plt.plot(ts, ivp_res-ref_res)
+        plt.yscale('log')
+        plt.savefig("log_error_plot")
 
-    rmse = np.sqrt(np.mean((res - ref_res)**2))
-    plt.clf()
-    plt.plot(ts, res-ref_res)
-    plt.yscale('log')
-    plt.savefig("log_error_plot")
-    print(rmse)
-    print(count)
+    print(np.array(rmse_vec)[:, None])
+    print(np.array(steps_taken_vec)[:, None])
+
+    rmse_vec1 = np.array(rmse_vec.copy())
+    steps_taken_vec1 = np.array(steps_taken_vec)
 
     rmses = []
+    steps_taken_vec = []
     for tol in tols:
         for i, eliminated_state in enumerate(states):
             labels = [s for s in states if s not in eliminated_state]
@@ -202,8 +213,18 @@ def main():
 
     print(steps_taken_vec, rmses)
 
+    rmses = np.hstack([rmses, rmse_vec1[:, None]])
+    steps_taken_vec = np.hstack([steps_taken_vec, steps_taken_vec1[:, None]])
 
-def get_reference_solution(mc, protocol, ts, voltage_func, tol=1e-13):
+    plt.clf()
+    plt.plot(steps_taken_vec, rmses, label=[s for s in state_labels] + ['optimised'])
+    plt.yscale('log')
+    # plt.xscale('log')
+    plt.legend()
+
+    plt.savefig("reduction_comparison")
+
+def get_reference_solution(mc, protocol, ts, voltage_func, tol=1e-12):
     # start with equal proportion of channels in each state
     state_labels, Q = mc.get_transition_matrix()
     y0 = np.full(Q.shape[0], 1.0)
@@ -218,8 +239,14 @@ def get_reference_solution(mc, protocol, ts, voltage_func, tol=1e-13):
     inputs = (y, parameter_labels, v)
 
     rhs_expr = (Q.T @ y).subs(mc.rate_expressions)
-
     rhs_func = njit(sp.lambdify(inputs, rhs_expr))
+    Q_func = njit(sp.lambdify(inputs, Q.T.subs(mc.rate_expressions)))
+
+    def jac_func(t, y, p):
+        offset = p[-1]
+        p = p[:-1].copy()
+        v = voltage_func(t, offset=offset)
+        return Q_func(y, p, v)
 
     def f_deriv(t, y, p):
         offset = p[-1]
@@ -244,10 +271,12 @@ def get_reference_solution(mc, protocol, ts, voltage_func, tol=1e-13):
         if tend not in _ts:
             _ts = np.append(_ts, tend)
 
-        y = solve_ivp(f_deriv, (tstart, tend), y0, args=(p,), dense_output=False,
-                        atol=tol, rtol=tol, method='RK45', t_eval=_ts)
-        y0 = y.y[:, -1].flatten()
-        res.append(y.y[:, :-1])
+        y = solve_ivp(f_deriv, (tstart, tend), y0, args=(p,), dense_output=True,
+                      atol=tol, rtol=tol, method='BDF', jac=jac_func)
+
+        _res = y.sol(_ts)
+        y0 = _res[:, -1].flatten()
+        res.append(_res[:, :-1])
 
     res.append(y0[:, None])
     res = np.hstack(res).T
@@ -258,23 +287,31 @@ def get_reference_solution(mc, protocol, ts, voltage_func, tol=1e-13):
 def count_solver_steps(mm, protocol, ts, tol=1e-3, y0=None):
     # start with equal proportion of channels in each state
 
+    inputs = (mm.y, mm.p, mm.v)
+    A_mat = mm.A.subs(mm.rates_dict)
+    A_func = njit(sp.lambdify(inputs, mm.A.subs(mm.rates_dict)))
+
     if y0 is None:
         y0 = np.full(len(mm.get_state_labels()), 1.0)
         y0 = y0 / (len(y0) + 1.0)
 
     rhs_func = mm.get_rhs_func()
 
+    voltage_func = mm.voltage
     def f_deriv(t, y, p):
         offset = p[-1]
         p = p[:-1].copy()
-        v = mm.voltage(t, offset=offset)
+        v = voltage_func(t, offset=offset)
         return rhs_func(y, p, v).flatten()
+
+    def jac_func(t, y, p=mm.default_parameters):
+        offset = p[-1]
+        p = p[:-1].copy()
+        v = voltage_func(t, offset=offset)
+        return A_func(y, p, v)
 
     # Add offset parameter
     p = np.append(mm.get_default_parameters(), 0.0)
-
-    jacobian = sp.Matrix(mm.A)
-    jac_func = njit(sp.lambdify(('t', 'y', mm.p), jacobian))
 
     count = 0
     res = []
@@ -288,8 +325,8 @@ def count_solver_steps(mm, protocol, ts, tol=1e-3, y0=None):
             _ts = np.append(_ts, tend)
 
         y = solve_ivp(f_deriv, (tstart, tend), y0, args=(p,), atol=tol,
-                      rtol=tol, method='RK45', dense_output=True)
-        # jac=jac_func)
+                      rtol=tol, method='BDF', dense_output=True, jac=jac_func)
+
         y0 = y.y[:, -1].flatten()
         count += y.nfev
         res.append(y.sol(_ts[:-1]))
@@ -305,9 +342,6 @@ def general_transform_with_reduction_vec(Q, e1):
     ortho_basis = construct_orthonormal_basis(e1)
     T = np.vstack((ortho_basis[:-1, :].astype(np.float64), np.full((1, N), 1.0)))
 
-    if np.linalg.det(T) < 1e-15:
-        return np.full((N, N), np.nan), np.full(N, np.nan)
-
     W = T @ Q.T @ np.linalg.inv(T)
     C = W[:-1, :-1]
     d = 1 * W[:-1, -1]
@@ -322,20 +356,26 @@ def opt_func(x, Q_func, voltages):
 
     conds = np.empty(len(voltages))
 
+    T = construct_orthonormal_basis(x)
+    T[-1, :] = 1.0
+
+    norm_type = 2
     for i, v in enumerate(voltages):
         Q = Q_func(v).astype(np.float64)
-        C, d = general_transform_with_reduction_vec(Q, x)
+
+        W = T @ Q.T @ np.linalg.inv(T)
+        C = W[:-1, :-1]
 
         if not np.all(np.isfinite(C)):
             return np.inf
 
-        conds[i] = np.linalg.cond(C, p=np.inf)
+        conds[i] = np.linalg.cond(C, p=norm_type)
 
-    return np.log10(np.max(conds))
+    return np.log10(np.mean(conds) * np.linalg.cond(T, p=norm_type))
 
 
 def construct_orthonormal_basis(v1):
-    v1 = v1 / np.linalg.norm(v1)
+    v1 = v1 / np.linalg.norm(v1, 2)
     n = v1.shape[0]
 
     basis = np.full((n, n), 0.0)
@@ -352,8 +392,8 @@ def construct_orthonormal_basis(v1):
         for j in range(c):
             v -= np.dot(v, basis[j, :]) * basis[j, :]
 
-        if np.linalg.norm(v) > 1e-18:
-            v /= np.linalg.norm(v)
+        if np.linalg.norm(v, 2) > 1e-10:
+            v /= np.linalg.norm(v, 2)
             basis[c, :] = v
             c += 1
 
