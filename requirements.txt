@@ -1,0 +1,3 @@
+git+https://github.com/CardiacModelling/Markov-builder@thirty_models
+myokit>=1.37
+git+https://github.com/joeyshuttleworth/MarkovModels@js_new_models
