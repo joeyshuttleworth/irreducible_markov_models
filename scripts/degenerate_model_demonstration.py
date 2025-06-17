@@ -36,13 +36,16 @@ def main():
     args = arg_parser.parse_args()
 
     fig = plt.figure(constrained_layout=True, figsize=args.figsize)
-    gs = gridspec.GridSpec(4, 2, figure=fig,
-                           height_ratios=[0.4, 1, 1, 1.5])
+    gs = gridspec.GridSpec(4, 3, figure=fig,
+                           height_ratios=[0.4, 1, 1, 1.5],
+                           width_ratios=[1, 1, 0.05])
     legend_ax = fig.add_subplot(gs[0, :])
-    solution_ax = fig.add_subplot(gs[1, :])
-    convergence_ax = fig.add_subplot(gs[2, :])
+    solution_ax = fig.add_subplot(gs[1, :-1])
+    convergence_ax = fig.add_subplot(gs[2, :-1])
     scatter_steps_ax = fig.add_subplot(gs[3, 0])
     scatter_rmse_ax = fig.add_subplot(gs[3, 1])
+
+    cax = fig.add_subplot(gs[1:3, -1])
 
     legend_ax.axis("off")
 
@@ -111,7 +114,7 @@ def main():
 
     new_params = {}
     new_params["k__D__ARF_1__ARF_1"] = 5e-2
-    new_params["d__D__ARF_1__ARF_1"] = 1e-1
+    new_params["d__D__ARF_1__ARF_1"] = 1e-2
 
     new_params["k__D__ARF_1__iaa_1"] = 5e-2
     new_params["d__D__ARF_1__iaa_1"] = 1e-2
@@ -121,13 +124,13 @@ def main():
 
     new_params["d__R"] = 1e-1
     new_params["k__RNA__IAA"] = 1.0
-    new_params["k__RNA__ARF"] = 2.0
+    new_params["k__RNA__ARF"] = 1.0
 
-    new_params["d__iaa_1__x"] = 1.0
+    new_params["d__iaa_1__x"] = 0.0
 
     new_params["k__G__ARF_1__ARF_1__R__iaa_1"] = 1.0
 
-    new_params["d__arf__all"] = 1.0
+    new_params["d__arf__all"] = 2.0
     new_params["d__iaa__all"] = 1.0
 
     new_params["k__G__ARF_1__iaa_1__R__ARF_1"] = 0.0
@@ -189,7 +192,7 @@ def main():
     #     plot_points.append((val, initial_promoter_vars[-1]))
 
     reduced_solver = asp_model_r.make_forward_solver()
-    ts = np.linspace(0, 1e3, 1000)
+    ts = np.linspace(0, 500.0, 1000)
 
     sol1, succ = reduced_solver(ts, reduced_param_dict, reduced_ic_dict, 1)
     r_odes, free_variables, transition_rates, constraints = asp_model_r.generate_ode_system()
@@ -244,7 +247,7 @@ def main():
     plt.close(fig2)
 
     rmses = []
-    tau_vals = 10**np.linspace(0, -6, 4)
+    tau_vals = 10**np.linspace(0, -2, 9)
 
     parameter_subs_dict = asp_model_r.parameter_subs_dict
     full_param_dict = asp_model_full.get_default_parameters(parameter_subs_dict=parameter_subs_dict)
@@ -263,15 +266,18 @@ def main():
         rmse = np.sqrt(np.mean((sol2[1:, plot_var_index_full] - sol1[1:, plot_var_index_red])**2))
         rmses.append(rmse)
 
-    divider = make_axes_locatable(solution_ax)
-    cax = divider.append_axes('right', size='10%', pad=0.05)
-    divider = make_axes_locatable(convergence_ax)
-    cax = divider.append_axes('right', size='10%', pad=0.05)
+    # divider = make_axes_locatable(solution_ax)
+    # _cax = divider.append_axes('right', size='10%', pad=0.05)
+    # _cax.set_visible(False)
+    # divider = make_axes_locatable(convergence_ax)
+    # cax = divider.append_axes('right', size='10%', pad=0.05)
     cbar = fig.colorbar(mpl.cm.ScalarMappable(norm=mpl.colors.LogNorm(tau_vals.min(), tau_vals.max()),
                                        cmap='rocket'), cax=cax,
-                 orientation='vertical', ax=plt.gca())
+                        orientation='vertical', ax=plt.gca(), shrink=1.0, pad=0.0)
+    cbar.ax.tick_params(labelsize=9)  # Set tick label font size to 14
+
     cbar.ax.set_ylabel(r"$\tau_G$")
-    cbar.ax.set_aspect(4)
+    cbar.ax.set_aspect("auto")
     cbar.ax.xaxis.set_label_position("bottom")
 
     # cax.set_axis_off()
@@ -279,6 +285,8 @@ def main():
         cax.spines[side].set_visible(False)
 
     convergence_ax.plot(ts, sol1[:, plot_var_index_red], color='grey', ls='--')
+
+    convergence_ax.set_ylabel(r"$R_I$")
 
     convergence_ax.set_xlabel(r"$t$ (s)")
 
@@ -299,8 +307,7 @@ def main():
         print(tau)
         full_param_dict[promoter_timeconstant] = tau
         p = np.array(list([full_param_dict[k] for k in sorted(full_param_dict.keys())]))
-        sol = scipy.integrate.solve_ivp(wrapped_rhs_func, _ts, x0, args=(p,),
-                                        atol=1e-5, rtol=1e-5)
+        sol = scipy.integrate.solve_ivp(wrapped_rhs_func, _ts, x0, args=(p,))
         steps_taken = sol.nfev
         steps_taken_list.append(steps_taken)
 
@@ -311,29 +318,38 @@ def main():
     _rhs_func = asp_model_r.generate_rhs_func(parameter_subs_dict)
     pp_jac_func, pp_inhomog_func = asp_model_r.get_promoter_ode_funcs()
 
+    print("Solving degenerate model")
+
     def wrapped_rhs_func(t, y, p):
-        pp_jac = pp_jac_func(y, p, [1.0])
         pp_inhomog = pp_inhomog_func(y, p, [1.0])
 
+        pp_jac = pp_jac_func(y, p, [1.0])
+        pp_inhomog = pp_inhomog_func(y, p, [1.0])
         state_ss = -np.linalg.solve(pp_jac, pp_inhomog).flatten()
         G = 1.0 - np.sum(state_ss)
 
         promoter_vars = np.concatenate([np.array([G]), state_ss])
         return _rhs_func(y, p, [1.0], promoter_vars).flatten()
 
-    sol = scipy.integrate.solve_ivp(wrapped_rhs_func, y0=x0, t_span=_ts, args=(p,),
-                                    atol=1e-5, rtol=1e-5)
+    print("Counting solver steps for degenerate system")
+    sol = scipy.integrate.solve_ivp(wrapped_rhs_func, y0=x0, t_span=_ts, args=(p,))
+
     steps_taken = sol.nfev
 
     ms = 10
-    scatter_rmse_ax.scatter(tau_vals, steps_taken_list, marker='x', s=ms)
-    scatter_rmse_ax.axhline(steps_taken, ls='--', color='grey')
-    scatter_rmse_ax.set_xscale('log')
-
-    scatter_steps_ax.scatter(tau_vals, rmses, marker='x', s=ms)
+    scatter_steps_ax.scatter(tau_vals, steps_taken_list, marker='x', s=ms)
+    scatter_steps_ax.axhline(steps_taken, ls='--', color='grey')
     scatter_steps_ax.set_xscale('log')
     scatter_steps_ax.set_yscale('log')
+    scatter_steps_ax.set_ylabel("RHS evaluations")
     scatter_steps_ax.set_xlabel(r"$\tau_G$")
+
+    scatter_rmse_ax.scatter(tau_vals, rmses, marker='x', s=ms)
+    scatter_rmse_ax.set_xscale('log')
+    scatter_rmse_ax.set_yscale('log')
+    scatter_rmse_ax.set_xlabel(r"$\tau_G$")
+    scatter_rmse_ax.set_ylabel(r"RMSE")
+
     fig.savefig(os.path.join(output_dir, "degenerate_model_fig.pdf"))
 
 if __name__ == "__main__":
