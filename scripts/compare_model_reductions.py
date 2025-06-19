@@ -15,6 +15,7 @@ import myokit as mk
 
 
 holding_potential = -80.0
+scaling_factor = 1.0
 
 def main():
     arg_parser = argparse.ArgumentParser()

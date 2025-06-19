@@ -169,28 +169,6 @@ def main():
         # break
         full_ic_dict[p] = initial_promoter_vars[i]
 
-    print(initial_promoter_vars)
-    print(full_ic_dict)
-
-    # vals = 10**np.linspace(-6, -3, 10)
-    # _params = params.copy()
-
-    # ics = np.array(list(reduced_ic_dict.values()))
-    # var_index = sorted(list(reduced_ic_dict.keys())).index('D__ARF_1__ARF_1')
-    # plot_points = []
-    # for val in vals:
-    #     ics[var_index] = val
-    #     jac = jac_func(ics,
-    #             _params,
-    #             np.array([1.0]))
-
-    #     cond_number = np.linalg.det(jac@jac.T)
-    #     inhomog = inhomog_func(ics,
-    #                         _params, [1.0])
-    #     initial_promoter_vars = -np.linalg.solve(jac, inhomog).flatten()
-    #     assert np.all(initial_promoter_vars > 0)
-    #     plot_points.append((val, initial_promoter_vars[-1]))
-
     reduced_solver = asp_model_r.make_forward_solver()
     ts = np.linspace(0, 500.0, 1000)
 
@@ -209,7 +187,14 @@ def main():
     }
     labels = [relabel_dict[k] if k in relabel_dict else k
               for k in reduced_ic_dict.keys()]
-    solution_ax.plot(ts, sol1, label=labels)
+
+    states_included_indices = [i for i in range(len(labels))
+                               if labels[i][:3] != r"$R_"]
+
+    labels = [labels[i] for i in states_included_indices]
+
+    solution_ax.plot(ts, sol1[:, states_included_indices],
+                     label=labels)
 
     # solution_ax.legend(ncol=3, fontsize=8)
     h, l = solution_ax.get_legend_handles_labels()
@@ -224,9 +209,6 @@ def main():
         full_param_dict[k] = v
 
     full_param_dict[promoter_timeconstant] = 1e-10
-
-    print(list(full_param_dict.keys()))
-    print(asp_model_full.get_default_parameters())
 
     full_solver = asp_model_full.make_forward_solver(parameter_subs_dict=full_parameter_subs_dict)
     sol2, succ = full_solver(ts, full_param_dict, full_ic_dict, 1, strict=False)
@@ -260,7 +242,7 @@ def main():
         # full_param_dict = asp_model_full.get_default_parameters(parameter_subs_dict=parameter_subs_dict)
         full_param_dict[promoter_timeconstant] = tau
         sol2, succ = full_solver(ts, full_param_dict, full_ic_dict, 1)
-        color = cmap((len(tau_vals) - i) / len(tau_vals))
+        color = cmap(i / len(tau_vals))
         convergence_ax.plot(ts, sol2[:, plot_var_index_full], color=color)
 
         rmse = np.sqrt(np.mean((sol2[1:, plot_var_index_full] - sol1[1:, plot_var_index_red])**2))
