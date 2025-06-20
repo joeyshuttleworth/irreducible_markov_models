@@ -115,8 +115,8 @@ def main():
         N = Q.shape[0]
         x0 = np.full(N, 1.0/N)
 
-        # if i == 2:
-        #     x0 = np.array([1.0, 0, 0])
+        if i == 2:
+            x0 = np.array([1.0, 0, 0])
 
         res = solve_ivp(deriv_func, [0, t_eval[-1]], x0,
                         t_eval=t_eval,

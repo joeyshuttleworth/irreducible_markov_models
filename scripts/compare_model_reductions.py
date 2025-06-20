@@ -5,6 +5,7 @@ import argparse
 import markov_builder as mb
 import scipy
 import cma
+import os
 
 from scipy.integrate import solve_ivp
 from numba import njit
@@ -12,19 +13,76 @@ from markov_builder.example_models import construct_wang_chain
 from markov_builder.example_models import construct_mazhari_chain
 from markovmodels import MarkovModel
 import myokit as mk
+import matplotlib
+import matplotlib.gridspec as gridspec
 
+
+font = {
+        'size'   : 11
+}
+
+matplotlib.rc('font', **font)
 
 holding_potential = -80.0
 scaling_factor = 1.0
 
+def setup_grid(fig):
+    gs = gridspec.GridSpec(5, 2, figure=fig,
+                           height_ratios=[0.25, 0.5, 1, 1, 1.5],
+                           width_ratios=[1, 1])
+
+    axs = [None] * 6
+
+    # Voltage ax
+    axs[1] = fig.add_subplot(gs[0, :])
+
+    # legend ax
+    axs[0] = fig.add_subplot(gs[1, :])
+
+    axs[2] = fig.add_subplot(gs[2, :])
+
+    # Occupations ax
+    axs[3] = fig.add_subplot(gs[3, :])
+
+    # Error in reduced models ax
+    axs[4] = fig.add_subplot(gs[4, 0])
+
+    # Error in full model ax
+    axs[5] = fig.add_subplot(gs[4, 1])
+
+    for ax in axs:
+        for side in ["top", "right"]:
+            ax.spines[side].set_visible(False)
+
+    return axs
+
 def main():
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("--model", default='Wang')
+    arg_parser.add_argument("--output_dir", default='output')
+    arg_parser.add_argument("--figsize", default=[4.5, 5.5], type=float,
+                            nargs=2)
+
+    global args
+    args = arg_parser.parse_args()
+
+    output_dir = os.path.join(args.output_dir,
+                              "compare_model_reductions")
+
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
 
     # Setup protocol
-    mk_protocol = mk.load_protocol('simplified-staircase.mmt')
+    mk_protocol = mk.load_protocol("simplified-staircase.mmt")
     protocol = []
     t_cur = 0
+
+    main_fig = plt.figure(figsize=args.figsize,
+                          constrained_layout=True)
+
+    voltage_ax, legend_ax, occupation_ax, current_ax, reduced_error_ax, \
+        full_error_ax = setup_grid(main_fig)
+
     for event in mk_protocol.events():
         duration = event.duration()
         start_t = t_cur
@@ -49,8 +107,11 @@ def main():
                 else:
                     return protocol[i][3]
 
-    global args
-    args = arg_parser.parse_args()
+    for tstart, tend, vstart, vend in protocol:
+        _ts = np.linspace(tstart, tend, int(end_t - start_t) + 1)
+        _vs = [protocol_func(t) for t in _ts]
+        voltage_ax.plot(_ts, _vs, color="black", lw=0.5)
+
     if args.model == 'Wang':
         mc = construct_wang_chain()
     elif args.model == 'Mazhari':
@@ -122,8 +183,33 @@ def main():
 
     ref_res = get_reference_solution(mc, protocol, ts, protocol_func)
 
-    plt.plot(ts, ref_res)
-    plt.savefig("reference_sol")
+    occupation_ax.plot(ts, ref_res, label=states)
+
+    # TODO Get this properly
+    open_index = 0
+    E_Kr = -90.0
+    g = 0.1524 #mS
+
+    voltages = np.array([protocol_func(t) for t in ts])
+
+    current = ref_res[:, open_index] * g * (voltages - E_Kr)
+    current_ax.plot(ts, current)
+
+    current_ax.set_xticks([0, current_ax.get_xticks()[-1]])
+    current_ax.set_xticklabels([0, current_ax.get_xticks()[-1] * 1e-3])
+    current_ax.set_xlabel(r"$t$ (s)")
+
+    handles, labels = occupation_ax.get_legend_handles_labels()
+    legend_ax.legend(handles, labels, ncol=4, frameon=False)
+    legend_ax.axis("off")
+
+    xticks = occupation_ax.get_xticks()
+    occupation_ax.set_xticks([0, xticks[-1]])
+    occupation_ax.set_xticklabels([0, xticks[-1] * 1e-3])
+
+    xlim = voltage_ax.get_xlim()
+    occupation_ax.set_xticklabels(xlim)
+    current_ax.set_xlim(xlim)
 
     eliminated_state = states[0]
     labels = [s for s in states if s not in eliminated_state]
@@ -218,11 +304,6 @@ def main():
         ivp_res = np.linalg.solve(T, ivp_res.T).T
         rmse = np.sqrt(np.mean((ivp_res - ref_res)**2))
         rmse_vec.append(rmse)
-        plt.clf()
-        plt.plot(ts, ivp_res-ref_res)
-        plt.yscale('log')
-        plt.savefig("log_error_plot")
-
     rmse_vec1 = np.array(rmse_vec.copy())
     steps_taken_vec1 = np.array(steps_taken_vec)
 
@@ -261,9 +342,9 @@ def main():
                             missing_state_res, axis=1)
             rmse = np.sqrt(np.mean((res - ref_res)**2))
             rmses.append(rmse)
-            plt.clf()
-            plt.plot(ts, res)
-            plt.savefig(f"{eliminated_state}_{tol:1e}_sol.pdf")
+            # plt.clf()
+            # plt.plot(ts, res)
+            # plt.savefig(os.path.join(output_dir, f"{eliminated_state}_{tol:1e}_sol.pdf"))
 
     rmses_full = []
     steps_taken_vec_full = []
@@ -305,14 +386,50 @@ def main():
     steps_taken_vec = np.hstack([steps_taken_vec, steps_taken_vec1[:, None],
                                  np.array(steps_taken_vec_full)[:, None]])
 
-    print(rmses, steps_taken_vec)
-    plt.clf()
-    plt.plot(steps_taken_vec, rmses, label=[s for s in state_labels] + ['optimised', 'full'])
-    plt.yscale('log')
-    # plt.xscale('log')
-    plt.legend()
+    state_to_plot_indices = [0, 1, 2]
+    reduced_error_ax.plot(steps_taken_vec[:, state_to_plot_indices],
+                          rmses[:, state_to_plot_indices],
+                          label=np.array(labels)[state_to_plot_indices])
+    reduced_error_ax.plot(steps_taken_vec[:, -2], rmses[:, -2],
+                          label="optimised", linestyle="--")
+    reduced_error_ax.set_yscale('log')
+    reduced_error_ax.set_xscale('log')
 
-    plt.savefig("reduction_comparison")
+    reduced_error_ax.legend()
+
+    steps_taken_vec = np.array(steps_taken_vec).reshape(len(tols), -1)
+    rmses = np.array(rmses).reshape(len(tols), -1)
+
+    rmses = np.hstack([rmses, rmse_vec1[:, None], np.array(rmses_full)[:, None]])
+    steps_taken_vec = np.hstack([steps_taken_vec, steps_taken_vec1[:, None],
+                                 np.array(steps_taken_vec_full)[:, None]])
+
+    full_error_ax.scatter(steps_taken_vec[:, 0], rmses[:, 0], s=10, marker="x",
+                          label=states[0])
+
+    full_error_ax.scatter(steps_taken_vec[:, -1], rmses[:, -1], s=10,
+                          label="full")
+
+    full_error_ax.set_yscale('log')
+    full_error_ax.set_xscale('log')
+
+    full_error_ax.legend()
+
+    full_error_ax.set_yscale(reduced_error_ax.get_yscale())
+    full_error_ax.set_yticks([])
+
+    occupation_ax.set_xticks([])
+    voltage_ax.set_xticks([])
+
+    full_error_ax.set_xticks([])
+    reduced_error_ax.set_xticks([])
+
+    reduced_error_ax.tick_params(axis='x', labelrotation=90)
+    full_error_ax.tick_params(axis='x', labelrotation=90)
+
+    current_ax.set_ylabel(r"$I_\text{Kr}$ (nA)")
+
+    main_fig.savefig(os.path.join(output_dir, "compare_reductions.pdf"))
 
 def get_reference_solution(mc, protocol, ts, voltage_func, tol=1e-10):
     # start with equal proportion of channels in each state
@@ -350,6 +467,12 @@ def get_reference_solution(mc, protocol, ts, voltage_func, tol=1e-10):
                                    if (str(key) not in ['E_Kr', 'E_rev', 'V'] and val is not None)])
 
     p = np.append(default_parameters, 0.0)
+
+    # Get initial conditions
+    sol = solve_ivp(f_deriv, (-1e4, -0.0001), y0, args=(p,), dense_output=True,
+                    atol=tol, rtol=tol, method='BDF', jac=jac_func)
+    y0 = sol.sol([0]).flatten()
+
     res = []
     for step in protocol:
         tstart, tend, vstart, vend = step
@@ -412,6 +535,10 @@ def count_solver_steps(mm, protocol, ts, tol=1e-3, y0=None, use_Q=False):
 
     count = 0
     res = []
+
+    sol = solve_ivp(f_deriv, (-1e4, 0.1e-4), y0, args=(p,), atol=tol,
+                    rtol=tol, method='BDF', dense_output=True, jac=jac_func)
+    y0 = sol.y[:, -1].flatten()
     for step in protocol:
         tstart, tend, vstart, vend = step
         if tstart == tend:
