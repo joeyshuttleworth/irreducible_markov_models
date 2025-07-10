@@ -315,7 +315,7 @@ ic_vec = [x2.x .+ t .* (x1.x .- x2.x) for t in range(0, 1, length=N)]
 colors = range(0, 1, length=length(ic_vec))  # Normalize to [0,1]
 cmap = cgrad(:viridis, length(ic_vec))
 
-p2 = plot(ylabel="IAA conc. total")
+p2 = plot(ylabel="IAA conc. total", xlabel=L"t")
 
 for (i, z0) in enumerate(ic_vec)
     prob = ODEProblem(f_deriv, z0, tspan, par_pp)
@@ -325,7 +325,8 @@ for (i, z0) in enumerate(ic_vec)
     label=false, line_z=iaa_total_func(z0), cmap=:viridis)
 end
 
-xticks = [0, round(Int, maximum(sol.t))]
+xticks = ([0, round(Int, maximum(sol.t))], [0, "1"])
+
 p2 = plot!(colorbar=false, xticks=xticks,
 guidefontsize=9,
            labelfontsize=9
@@ -334,7 +335,7 @@ guidefontsize=9,
 colors = range(0, 1, length=length(ic_vec))  # Normalize to [0,1]
 cmap = cgrad(:viridis, length(ic_vec))
 
-tspan = (0.0, 1e5)
+tspan = (0.0, 5e5)
 
 scene = plot(xlabel="ARF conc. total")
 
@@ -342,7 +343,6 @@ xlim_max = 0.0
 for (i, z0) in enumerate(ic_vec)
     prob = ODEProblem(f_deriv, z0, tspan, par_pp)
     sol = DifferentialEquations.solve(prob)
-    color = cmap[colors[i]]
     xvals = [arf_total_func(x) for x in sol.u]
     global xlim_max = max(xlim_max, maximum(xvals))
 
