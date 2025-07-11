@@ -386,16 +386,19 @@ def main():
     steps_taken_vec = np.hstack([steps_taken_vec, steps_taken_vec1[:, None],
                                  np.array(steps_taken_vec_full)[:, None]])
 
-    state_to_plot_indices = [0, 1, 2]
+    state_to_plot_indices = [0, 1, 2, 3, 4]
     reduced_error_ax.plot(steps_taken_vec[:, state_to_plot_indices],
                           rmses[:, state_to_plot_indices],
                           label=np.array(labels)[state_to_plot_indices])
-    reduced_error_ax.plot(steps_taken_vec[:, -2], rmses[:, -2],
-                          label="optimised", linestyle="--")
+
+    # reduced_error_ax.plot(steps_taken_vec[:, -2], rmses[:, -2],
+    #                       label="optimised", linestyle="--")
+
     reduced_error_ax.set_yscale('log')
     reduced_error_ax.set_xscale('log')
 
-    reduced_error_ax.legend()
+    # r_leg = reduced_error_ax.legend(frameon=False, ncol=2, fontsize=9,
+    #                                 bbox_to_anchor=[0.75, 1])
 
     steps_taken_vec = np.array(steps_taken_vec).reshape(len(tols), -1)
     rmses = np.array(rmses).reshape(len(tols), -1)
@@ -404,28 +407,33 @@ def main():
     steps_taken_vec = np.hstack([steps_taken_vec, steps_taken_vec1[:, None],
                                  np.array(steps_taken_vec_full)[:, None]])
 
-    full_error_ax.scatter(steps_taken_vec[:, 0], rmses[:, 0], s=10, marker="x",
+    full_error_ax.plot(steps_taken_vec[:, 0], rmses[:, 0],
                           label=states[0])
 
-    full_error_ax.scatter(steps_taken_vec[:, -1], rmses[:, -1], s=10,
-                          label="full")
+    full_error_ax.plot(steps_taken_vec[:, -1], rmses[:, -1],
+                       label="full", color="black", ls="--"
+                       )
+
+    reduced_error_ax.set_ylabel("RMSE")
+    reduced_error_ax.set_xlabel("Function evaluations")
+    full_error_ax.set_xlabel("Function evaluations")
 
     full_error_ax.set_yscale('log')
     full_error_ax.set_xscale('log')
 
-    full_error_ax.legend()
+    # full_error_ax.legend(frameon=False, ncol=2, fontsize=9)
 
-    full_error_ax.set_yscale(reduced_error_ax.get_yscale())
+    reduced_error_ax.set_ylim([1e-8, 1e-2])
+    full_error_ax.set_ylim(reduced_error_ax.get_ylim())
     full_error_ax.set_yticks([])
 
     occupation_ax.set_xticks([])
     voltage_ax.set_xticks([])
 
-    full_error_ax.set_xticks([])
-    reduced_error_ax.set_xticks([])
-
     reduced_error_ax.tick_params(axis='x', labelrotation=90)
     full_error_ax.tick_params(axis='x', labelrotation=90)
+
+    reduced_error_ax.set_xlim([1e3, 1.1e4])
 
     current_ax.set_ylabel(r"$I_\text{Kr}$ (nA)")
 
@@ -536,7 +544,7 @@ def count_solver_steps(mm, protocol, ts, tol=1e-3, y0=None, use_Q=False):
     count = 0
     res = []
 
-    sol = solve_ivp(f_deriv, (-1e4, 0.1e-4), y0, args=(p,), atol=tol,
+    sol = solve_ivp(f_deriv, (-1e4, 1e-5), y0, args=(p,), atol=tol,
                     rtol=tol, method='BDF', dense_output=True, jac=jac_func)
     y0 = sol.y[:, -1].flatten()
     for step in protocol:

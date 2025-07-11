@@ -7,7 +7,6 @@ import cma
 from scipy.integrate import solve_ivp
 
 import os
-
 import numpy as np
 
 colours = matplotlib.cm.Set2(range(4))
@@ -55,7 +54,7 @@ def generate_models():
 
     Q2 = np.array([[-11, 1, 10], [2, -5, 3], [5, 4, -9]]) / 10.0
 
-    k1, k2, k3, k4, k5, k6 = np.array([1, 0.1, 1, 0.1, 0.5, 0.05])
+    k1, k2, k3, k4, k5, k6 = np.array([1, 0.1, 1, 0.1, 2, 0.1])
 
     Q3 = np.array([[-k1-k6, k1, k6], [k2, -k2-k3, k3], [k5, k4, -k4-k5]]).astype(np.float64)
 
@@ -82,6 +81,9 @@ def main():
         penalty = 0
         if np.any(xvec <= 0):
             penalty += np.sum(xvec[xvec<=0]**2) * 1e5
+        k1, k2, k3, k4, k5, k6 = xvec
+
+        xvec = np.max(xvec, 0)
 
         Q3 = np.array([[-k1-k6, k1, k6],
                        [k2, -k2-k3, k3],
@@ -90,23 +92,23 @@ def main():
         min_index = np.argmin(lamb)
         vs = vs[[i for i in range(vs.shape[0]) if i != min_index], :]
 
-        return penalty + 1 / (np.linalg.norm(np.imag(vs)) / np.linalg.norm(np.real(vs)))
+        return penalty + 1 / (np.linalg.norm(np.real(vs)) / np.linalg.norm(np.imag(vs)))
 
-    # es = cma.CMAEvolutionStrategy([1, 1, 1, 1, 1, 1e-5], 1.0)
-    # res = es.optimize(optim_func).result
-    # xopt = res.xbest
-    # xopt = xopt / np.linalg.norm(xopt)
-    # score = res.fbest
+    es = cma.CMAEvolutionStrategy([1, 1, 1, 1, 1, 1e-5], 1.0)
+    res = es.optimize(optim_func).result
+    xopt = res.xbest
+    xopt = xopt / np.linalg.norm(xopt)
+    score = res.fbest
 
-    # k1, k2, k3, k4, k5, k6 = xopt
-    # Q3 = np.array([[-k1-k6, k1, k6],
-    #                [k2, -k2-k3, k3],
-    #                [k5, k4, -k4-k5]]).astype(np.float64)
-    # lamb, vs = np.linalg.eig(Q3)
-    # min_index = np.argmin(lamb)
-    # vs = vs[[i for i in range(vs.shape[0]) if i != min_index], :]
+    k1, k2, k3, k4, k5, k6 = xopt
+    Q3 = np.array([[-k1-k6, k1, k6],
+                   [k2, -k2-k3, k3],
+                   [k5, k4, -k4-k5]]).astype(np.float64)
+    lamb, vs = np.linalg.eig(Q3)
+    min_index = np.argmin(lamb)
+    vs = vs[[i for i in range(vs.shape[0]) if i != min_index], :]
 
-    # print(xopt, score, lamb)
+    print(xopt, score, lamb)
 
     Q1, Q2, Q3 = generate_models()
 
@@ -114,9 +116,8 @@ def main():
     for i, Q in enumerate([Q1, Q2, Q3]):
         N = Q.shape[0]
         x0 = np.full(N, 1.0/N)
-
-        if i == 2:
-            x0 = np.array([1.0, 0, 0])
+        # if i == 2:
+        #     x0 = np.array([1.0, 0, 0])
 
         res = solve_ivp(deriv_func, [0, t_eval[-1]], x0,
                         t_eval=t_eval,
