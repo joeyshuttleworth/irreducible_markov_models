@@ -54,6 +54,11 @@ def setup_grid(fig):
         for side in ["top", "right"]:
             ax.spines[side].set_visible(False)
 
+    cap_ax = [axs[i] for i, ax in enumerate(axs) if i != 1]
+
+    for cap, cap_ax in zip("abcdefg", axs):
+        ax.set_title(cap, fontweight="bold", loc="left")
+
     return axs
 
 def main():
@@ -111,6 +116,8 @@ def main():
         _ts = np.linspace(tstart, tend, int(end_t - start_t) + 1)
         _vs = [protocol_func(t) for t in _ts]
         voltage_ax.plot(_ts, _vs, color="black", lw=0.5)
+
+    voltage_ax.set_ylabel("V (mV)")
 
     if args.model == 'Wang':
         mc = construct_wang_chain()
