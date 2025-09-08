@@ -5,21 +5,39 @@ import markov_builder
 import matplotlib
 import cma
 from scipy.integrate import solve_ivp
-from markov_builder.example_models import construct_wang_chain
+from markov_builder.example_models import construct_wang_chain, construct_four_state_chain
 from markov_builder import MarkovChain
 from markov_builder.rate_expressions import negative_rate_expr, positive_rate_expr
+
+from numbalsoda import lsoda, lsoda_sig
 
 import os
 import numpy as np
 import myokit as mk
 import sympy as sp
+import seaborn as sns
 
 from numba import njit
 
-tol = 1e-6
+tol = 1e-12
 
 
 def main():
+
+    arg_parser = argparse.ArgumentParser()
+    arg_parser.add_argument("--output_dir", default='output')
+    arg_parser.add_argument("--figsize", default=[4.8, 5.5], type=float,
+                            nargs=2)
+
+    global args
+    args = arg_parser.parse_args()
+
+    output_dir = os.path.join(args.output_dir,
+                              "simple_drug_model")
+
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
     mc = construct_wang_chain()
 
     drugged_states = ["d_O"]
@@ -27,11 +45,8 @@ def main():
     for s in drugged_states:
         mc.add_state(s)
 
-    rates = [
-        ("O", "d_O", "D_on", "D_off"),
-    ]
-
     constant_rate_expr = ('a', ('a',))
+
     rate_dictionary = {'a_a0': positive_rate_expr + ((0.022348, 0.01176),),
                        'a_a1': positive_rate_expr + ((0.013733, 0.038198),),
                        'b_a0': negative_rate_expr + ((0.047002, 0.0631),),
@@ -45,37 +60,43 @@ def main():
                        'k_b': constant_rate_expr + ((0.036778,),),
                        }
 
+
     new_rate_dictionary = {
         "D_on": ("D * k_on",) + (tuple(),),
-        "D_off": ("D * k_off",) + (tuple(),),
+        "D_off": ("k_off",) + (tuple(),),
     }
 
     rate_dictionary = {**new_rate_dictionary, **rate_dictionary}
     print(rate_dictionary)
 
+    rates = [
+        ("O", "d_O", "D_on", "D_off"),
+    ]
+
     for r in rates:
         mc.add_both_transitions(*r)
 
     shared_variable_dict = {
-        "k_on": 1e-2,
-        "k_off": 1e-1,
+        "k_on":  1e-1,
+        "k_off": 1e-2,
     }
 
     print(mc.default_values)
 
     mc.parameterise_rates(rate_dictionary, shared_variables=shared_variable_dict)
 
-    labels = mc.get_states()
-    A, B =  mc.eliminate_state_from_transition_matrix(labels[:-1],
-                                                      use_parameters=True)
+    states = sorted(mc.get_states())
 
-    print(A)
-    print(B)
+    # Reverse order of closed states so that they're the right way round in the legend
+    states = list(reversed(["d_O", "O", "I", "C1", "C2", "C3"]))
+
+    state_labels, Q =  mc.get_transition_matrix(use_parameters=True, label_order=states)
 
     parameter_labels = sorted([key
                                for key, val in list(mc.default_values.items())
-                               if str(key) not in ['E_Kr', 'E_rev', 'V']
+                               if str(key) not in ['E_Kr', 'E_rev', 'V', 'D', 'g_Kr']
                                and val is not None])
+    print(state_labels, Q)
     print(parameter_labels)
 
     param_values = np.array([mc.default_values[k] for k in parameter_labels])
@@ -93,35 +114,37 @@ def main():
         level = event.level()
         protocol.append((start_t, end_t, level, level))
 
-    protocol = np.vstack(protocol).astype(np.float64)
 
-    # Now repeat protocol 3 times
-    offset = protocol[-1, 1]
-    protocol = np.vstack([protocol, protocol + np.array([[offset, offset, 0.0, 0.0]]),
-                          protocol + np.array([[offset, offset, 0.0, 0.0]])])
+    protocol = np.array([[0, 1000.0, -80, -80],
+                         [1000.0, 2000.0, 0.0, 0.0],
+                         [2000.0, 2999.0, 40.0, 40.0],
+                         [2999.0, 4000.0, -80.0, -80.0]
+                         ])
+    protocol = np.vstack(protocol).astype(np.float64)
 
     # Define inputs for sympy function
     D_symbol = "D"
 
-    y_symbols = sp.Matrix([mc.get_state_symbol(s) for s in labels][:-1])
-    p_symbols = sp.Matrix([key
-                           for key, val in mc.default_values.items()
-                           if str(key) not in ['E_Kr', 'E_rev', 'V']
-                           and val is not None])
+    y_symbols = sp.Matrix([mc.get_state_symbol(s) for s in state_labels])
+    p_symbols = parameter_labels
 
     v_symbol = "V"
 
     inputs = (y_symbols, p_symbols, v_symbol, D_symbol)
-    rhs_expr = A @ y_symbols + B
+    # rhs_expr = A @ y_symbols + B
+
+    rhs_expr = Q.T @ y_symbols
     rhs_expr = rhs_expr.subs(mc.rate_expressions)
+
+    print(state_labels)
+    print(rhs_expr)
 
     rhs_func = njit(sp.lambdify(inputs, rhs_expr))
 
     y0 = np.array([0 for y in y_symbols])
     y0[0] = 1.0
-    print("rhsfunc")
     val = rhs_func(y0, param_values, 0.0, 0.0)
-    print(val)
+    print("rhsfunc", val)
 
     @njit
     def f_deriv(t, y, p=param_values, offset=0.0):
@@ -134,46 +157,113 @@ def main():
         dy = rhs_func(y, p, v, float(D)).flatten()
         return dy
 
-    A_func = sp.lambdify(inputs, A)
-    def jac_func(t, y, p=param_values, offset=0.0):
-        offset = p
-        p = p.copy()
-        v = protocol_func(t, offset=offset, protocol=protocol)
-        return A_func(y, p, v).flatten()
-
-    sol = solve_ivp(f_deriv, (-1e4, 1e-5), y0, atol=tol, rtol=tol,
-                    method='BDF', dense_output=True, #jac=jac_func,
+    sol = solve_ivp(f_deriv, (-1e4, 0), y0, atol=tol, rtol=tol,
+                    dense_output=True, #jac=jac_func,
                     args=(param_values,))
 
     y0 = sol.y[:, -1].flatten()
+    print("Sol at t=0: ", y0)
 
     # Solve over each step of the protocol
     count = 0
     res = []
-    print(protocol)
+    ts = np.linspace(protocol[0, 0], protocol[-1, 1],
+                     int(protocol[-1, 0]) * 10)
+
+    ys = []
     for step in protocol:
         tstart, tend, vstart, vend = step
-        if tstart == tend:
-            continue
-        ts = sol.t
-        print("times", ts)
         _ts = ts[(ts >= tstart) & (ts <= tend)]
-
 
         if tend not in _ts:
             _ts = np.append(_ts, tend)
 
+        y0 = y0.flatten()
+
         y = solve_ivp(f_deriv, (tstart, tend), y0, args=(param_values,), atol=tol,
-                      rtol=tol, method='BDF', dense_output=True,
-                      # jac=jac_func
-                      )
+                      rtol=tol, dense_output=False, t_eval=_ts)
 
-        y0 = y.y[:, -1].flatten()
-        count += y.nfev
+        print(y)
 
-        ys = y.sol(ts)
-        if len(ys) > 1:
-            res.append(ys.T[:-1, :])
+        _ys = y.y.T
+        y0 = _ys[-1, :].flatten()
+
+        print(tstart, tend, _ts)
+        print(_ys)
+        ys.append(_ys[:-1, :])
+
+    # Add last observation
+    ys.append(y0.flatten()[None, :])
+
+    ys = np.vstack(ys)
+
+    fig = plt.figure(figsize=args.figsize, constrained_layout=True)
+
+    axs = fig.subplots(3, 1, sharex=True, height_ratios=[.25, .25, 1])
+
+    Ds = np.array([drug_func(t, 0.0, protocol) for t in ts])
+
+    axs[0].plot(ts, Ds, color="black")
+    print(protocol)
+    Vs = np.array([protocol_func(t, 0.0, protocol) for t in ts])
+    axs[1].plot(ts, Vs, color="black")
+    # axs[2].plot(ts, ys, label=state_labels)
+
+    occupations_ax = axs[2]
+    culm_states = np.full(ys.shape[0], 0.0)
+    colours = sns.husl_palette(len(state_labels))
+
+    state_label_dict = {s: r"$" f"{s[0]}_{s[1:]}" r"$" if len(s) > 1
+                        else r"$" f"{s[0]}" r"$"
+                        for s in state_labels}
+
+    state_label_dict["d_O"] = r"$O_D$"
+
+    for i in range(ys.shape[1]):
+        colour = colours[i]
+        label = state_label_dict[state_labels[i]]
+
+        occupations_ax.plot(ts, culm_states + ys[:, i].flatten(),
+                            color='grey', lw=1.0)
+
+        occupations_ax.fill_between(ts, culm_states,
+                                    culm_states + ys[:, i].flatten(),
+                                    color=colour,
+                                    label=label)
+
+        culm_states += ys[:, i].flatten()
+
+    handles, labels = axs[2].get_legend_handles_labels()
+    axs[2].legend(handles[::-1], labels[::-1], frameon=True)
+
+
+    for ax in axs:
+        for side in [["top", "right"]]:
+            ax.spines[side].set_visible(False)
+
+    for ax in axs[:-1]:
+        ax.set_xticklabels([])
+
+    axs[1].set_yticks([-80, 0, 40])
+
+    axs[2].set_xlim(0, ts.max())
+    axs[2].set_ylim(0, 1.0)
+
+    xticks = axs[2].get_xticks()
+    axs[2].set_xticks(xticks)
+
+    axs[2].set_xticklabels([int(float(x) * 1e-3) for x in xticks])
+    axs[2].set_xlabel(r"$t$ (s)")
+
+    axs[1].set_ylabel(r"$V$ (mV)")
+    axs[0].set_ylabel(r"$D$")
+    axs[2].set_ylabel(r"state occupancy")
+
+    for ax, cap in zip(axs, "abcdef"):
+        ax.set_title(cap, loc="left", weight="bold")
+
+    fig.savefig(os.path.join(output_dir, "drug_model_output.pdf"))
+
 
 holding_potential = -80.0
 @njit
@@ -188,11 +278,13 @@ def protocol_func(t, offset, protocol):
                 return protocol[i][2] + (t - protocol[i][0])*(protocol[i][3]-protocol[i][2])/(protocol[i][1] - protocol[i][0])
             else:
                 return protocol[i][3]
+    return holding_potential
 
 
 @njit
 def drug_func(t, offset, protocol):
-    if t > protocol[:, 1].max() / 3 and t < 2 * protocol[:, 1].max()/3:
+    t += offset
+    if t > protocol[1, 0] and t < protocol[2, 1]:
         return 1.0
     return 0.0
 
