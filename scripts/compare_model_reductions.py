@@ -16,6 +16,8 @@ import myokit as mk
 import matplotlib
 import matplotlib.gridspec as gridspec
 
+import seaborn as sns
+
 
 font = {
         'size'   : 11
@@ -54,9 +56,9 @@ def setup_grid(fig):
         for side in ["top", "right"]:
             ax.spines[side].set_visible(False)
 
-    cap_ax = [axs[i] for i, ax in enumerate(axs) if i != 1]
+    cap_axs = [axs[i] for i, ax in enumerate(axs) if i != 1]
 
-    for cap, cap_ax in zip("abcdefg", axs):
+    for cap, cap_ax in zip("abcdefg", cap_axs):
         ax.set_title(cap, fontweight="bold", loc="left")
 
     return axs
@@ -65,7 +67,7 @@ def main():
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("--model", default='Wang')
     arg_parser.add_argument("--output_dir", default='output')
-    arg_parser.add_argument("--figsize", default=[4.5, 5.5], type=float,
+    arg_parser.add_argument("--figsize", default=[4.5, 6.0], type=float,
                             nargs=2)
 
     global args
@@ -85,7 +87,7 @@ def main():
     main_fig = plt.figure(figsize=args.figsize,
                           constrained_layout=True)
 
-    voltage_ax, legend_ax, occupation_ax, current_ax, reduced_error_ax, \
+    voltage_ax, legend_ax, occupations_ax, current_ax, reduced_error_ax, \
         full_error_ax = setup_grid(main_fig)
 
     for event in mk_protocol.events():
@@ -115,7 +117,7 @@ def main():
     for tstart, tend, vstart, vend in protocol:
         _ts = np.linspace(tstart, tend, int(end_t - start_t) + 1)
         _vs = [protocol_func(t) for t in _ts]
-        voltage_ax.plot(_ts, _vs, color="black", lw=0.5)
+        voltage_ax.plot(_ts, _vs, color="black")
 
     voltage_ax.set_ylabel("V (mV)")
 
@@ -174,7 +176,7 @@ def main():
         if not mc.is_connected():
             raise NotImplementedError
 
-    states = mc.get_states()
+    states = list(["O", "I", "C1", "C2", "C3"])
 
     parameter_labels = [key
                         for key, val in mc.default_values.items()
@@ -189,8 +191,29 @@ def main():
     ts = np.linspace(0, int(tend), int(tend) + 1)
 
     ref_res = get_reference_solution(mc, protocol, ts, protocol_func)
+    ys = ref_res.copy()[:, ::-1]
 
-    occupation_ax.plot(ts, ref_res, label=states)
+    culm_states = np.full(ys.shape[0], 0.0)
+    colours = sns.husl_palette(len(state_labels))
+
+    state_label_dict = {s: r"$" f"{s[0]}_{s[1:]}" r"$" if len(s) > 1
+                        else r"$" f"{s[0]}" r"$"
+                        for s in state_labels}
+
+    for i in range(ys.shape[1]):
+        colour = colours[i]
+        label = state_label_dict[state_labels[i]]
+
+        occupations_ax.plot(ts, culm_states + ys[:, i].flatten(),
+                            color='grey', lw=.3)
+
+        occupations_ax.fill_between(ts, culm_states,
+                                    culm_states + ys[:, i].flatten(),
+                                    color=colour,
+                                    label=label)
+
+        culm_states += ys[:, i].flatten()
+
 
     # TODO Get this properly
     open_index = 0
@@ -200,24 +223,26 @@ def main():
     voltages = np.array([protocol_func(t) for t in ts])
 
     current = ref_res[:, open_index] * g * (voltages - E_Kr)
-    current_ax.plot(ts, current)
+    current_ax.plot(ts, current, color="black")
 
-    current_ax.set_xticks([0, current_ax.get_xticks()[-1]])
+    current_ax.set_xticks([0, current_ax.get_xlim()[-1]])
     current_ax.set_xticklabels([0, current_ax.get_xticks()[-1] * 1e-3])
     current_ax.set_xlabel(r"$t$ (s)")
 
-    handles, labels = occupation_ax.get_legend_handles_labels()
+    handles, labels = occupations_ax.get_legend_handles_labels()
     legend_ax.legend(handles, labels, ncol=4, frameon=False)
     legend_ax.axis("off")
 
-    xticks = occupation_ax.get_xticks()
-    occupation_ax.set_xticks([0, xticks[-1]])
-    occupation_ax.set_xticklabels([0, xticks[-1] * 1e-3])
+    xticks = occupations_ax.get_xticks()
+    occupations_ax.set_xticks([0, xticks[-1]])
+    occupations_ax.set_xticklabels([0, xticks[-1] * 1e-3])
 
     xlim = voltage_ax.get_xlim()
-    occupation_ax.set_xticklabels(xlim)
+    occupations_ax.set_xticklabels(xlim)
     current_ax.set_xlim(xlim)
 
+    states = mc.get_states()
+    print(states)
     eliminated_state = states[0]
     labels = [s for s in states if s not in eliminated_state]
     A, B = mc.eliminate_state_from_transition_matrix(labels,
@@ -393,10 +418,12 @@ def main():
     steps_taken_vec = np.hstack([steps_taken_vec, steps_taken_vec1[:, None],
                                  np.array(steps_taken_vec_full)[:, None]])
 
-    state_to_plot_indices = [0, 1, 2, 3, 4]
-    reduced_error_ax.plot(steps_taken_vec[:, state_to_plot_indices],
-                          rmses[:, state_to_plot_indices],
-                          label=np.array(labels)[state_to_plot_indices])
+    # state_to_plot_indices = [0, 1, 2, 3, 4]
+    for i in range(0, steps_taken_vec.shape[1] - 2):
+        reduced_error_ax.plot(steps_taken_vec[:, i],
+                              rmses[:, i],
+                              label=state_labels[i],
+                              color=colours[i])
 
     # reduced_error_ax.plot(steps_taken_vec[:, -2], rmses[:, -2],
     #                       label="optimised", linestyle="--")
@@ -415,8 +442,9 @@ def main():
                                  np.array(steps_taken_vec_full)[:, None]])
 
     full_error_ax.plot(steps_taken_vec[:, 0], rmses[:, 0],
-                          label=states[0])
+                       label=states[0], color=colours[0])
 
+    print(steps_taken_vec[:, -1], rmses[:, -1])
     full_error_ax.plot(steps_taken_vec[:, -1], rmses[:, -1],
                        label="full", color="black", ls="--"
                        )
@@ -434,7 +462,7 @@ def main():
     full_error_ax.set_ylim(reduced_error_ax.get_ylim())
     full_error_ax.set_yticks([])
 
-    occupation_ax.set_xticks([])
+    occupations_ax.set_xticks([])
     voltage_ax.set_xticks([])
 
     reduced_error_ax.tick_params(axis='x', labelrotation=90)

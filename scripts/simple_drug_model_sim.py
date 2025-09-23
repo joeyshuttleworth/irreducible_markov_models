@@ -252,12 +252,12 @@ def main():
     xticks = axs[2].get_xticks()
     axs[2].set_xticks(xticks)
 
-    axs[2].set_xticklabels([int(float(x) * 1e-3) for x in xticks])
+    axs[2].set_xticklabels([float(x) * 1e-3 for x in xticks])
     axs[2].set_xlabel(r"$t$ (s)")
 
     axs[1].set_ylabel(r"$V$ (mV)")
     axs[0].set_ylabel(r"$D$")
-    axs[2].set_ylabel(r"state occupancy")
+    axs[2].set_ylabel(r"State occupancy")
 
     for ax, cap in zip(axs, "abcdef"):
         ax.set_title(cap, loc="left", weight="bold")

@@ -318,7 +318,9 @@ cmap = cgrad(:viridis, length(ic_vec))
 p2 = plot(ylabel="IAA conc. total", xlabel=L"t")
 
 for (i, z0) in enumerate(ic_vec)
+    local prob
     prob = ODEProblem(f_deriv, z0, tspan, par_pp)
+    local sol
     sol = DifferentialEquations.solve(prob)
     color = cmap[colors[i]]
     plot!(sol.t, [iaa_total_func(x) for x in sol.u],
@@ -341,7 +343,9 @@ scene = plot(xlabel="ARF conc. total")
 
 xlim_max = 0.0
 for (i, z0) in enumerate(ic_vec)
+    local prob
     prob = ODEProblem(f_deriv, z0, tspan, par_pp)
+    local sol
     sol = DifferentialEquations.solve(prob)
     xvals = [arf_total_func(x) for x in sol.u]
     global xlim_max = max(xlim_max, maximum(xvals))
@@ -361,9 +365,9 @@ p3 = plot!(colorbar=true, ylabel="", yticks=false,
 # 'a' is top, 'b' and 'c' are bottom
 my_layout = @layout [a; [b c]]
 
-annotate!(p1, (0, 250, text("a", :bold, 11)))
-annotate!(p2, (0, 500, text("b", :bold, 11)))
-annotate!(p3, (0, 500, text("c", :bold, 11)))
+annotate!(p1, (0, 250, text(L"\mathbf{a}", 12, :black, :left)))
+annotate!(p2, (0, 500, text(L"\mathbf{b}", 12, :black, :left)))
+annotate!(p3, (0, 500, text(L"\mathbf{c}", 12, :black, :left)))
 
 plot(p1, p2, p3; layout=my_layout,
      labelfontsize=9,
