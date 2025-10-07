@@ -67,7 +67,7 @@ def main():
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("--model", default='Wang')
     arg_parser.add_argument("--output_dir", default='output')
-    arg_parser.add_argument("--figsize", default=[4.5, 6.0], type=float,
+    arg_parser.add_argument("--figsize", default=[4.5, 5.5], type=float,
                             nargs=2)
 
     global args
@@ -182,6 +182,7 @@ def main():
                         for key, val in mc.default_values.items()
                         if str(key) not in ['E_Kr', 'E_rev', 'V'] and val is not None]
 
+    global label_order
     label_order = states
     state_labels, Q = mc.get_transition_matrix(label_order=label_order)
 
@@ -191,28 +192,27 @@ def main():
     ts = np.linspace(0, int(tend), int(tend) + 1)
 
     ref_res = get_reference_solution(mc, protocol, ts, protocol_func)
-    ys = ref_res.copy()[:, ::-1]
 
-    culm_states = np.full(ys.shape[0], 0.0)
+    culm_states = np.full(ref_res.shape[0], 0.0)
     colours = sns.husl_palette(len(state_labels))
 
     state_label_dict = {s: r"$" f"{s[0]}_{s[1:]}" r"$" if len(s) > 1
                         else r"$" f"{s[0]}" r"$"
                         for s in state_labels}
 
-    for i in range(ys.shape[1]):
+    for i in range(ref_res.shape[1]):
         colour = colours[i]
         label = state_label_dict[state_labels[i]]
 
-        occupations_ax.plot(ts, culm_states + ys[:, i].flatten(),
+        occupations_ax.plot(ts, culm_states + ref_res[:, i].flatten(),
                             color='grey', lw=.3)
 
         occupations_ax.fill_between(ts, culm_states,
-                                    culm_states + ys[:, i].flatten(),
+                                    culm_states + ref_res[:, i].flatten(),
                                     color=colour,
                                     label=label)
 
-        culm_states += ys[:, i].flatten()
+        culm_states += ref_res[:, i].flatten()
 
 
     # TODO Get this properly
@@ -241,9 +241,7 @@ def main():
     occupations_ax.set_xticklabels(xlim)
     current_ax.set_xlim(xlim)
 
-    states = mc.get_states()
-    print(states)
-    eliminated_state = states[0]
+    eliminated_state = label_order[0]
     labels = [s for s in states if s not in eliminated_state]
     A, B = mc.eliminate_state_from_transition_matrix(labels,
                                                      use_parameters=True)
@@ -258,6 +256,8 @@ def main():
     symbols['p'] = sp.Matrix([sp.sympify(p) for p in parameter_labels])
     symbols['y'] = sp.Matrix([mc.get_state_symbol(s)
                                 for s in labels])
+    print(symbols['y'])
+
     mm = MarkovModel(symbols, A, B, mc.rate_expressions,
                      voltage=protocol_func,
                      default_parameters=default_parameters,
@@ -306,7 +306,6 @@ def main():
 
     resvec = es.result.xbest
     resvec /= np.linalg.norm(resvec, 2)
-    print(resvec)
 
     C, d = general_transform_with_reduction_vec(Q, resvec)
     mm = MarkovModel(symbols, C, d, mc.rate_expressions,
@@ -320,8 +319,6 @@ def main():
     ortho_basis = construct_orthonormal_basis(resvec)
     N = Q.shape[0]
     T = ortho_basis.copy()
-
-    print(T, np.linalg.det(T), np.linalg.cond(T))
 
     y0 = np.full(len(mm.get_state_labels()) + 1, 1.0)
     y0 = y0 / (len(y0))
@@ -341,49 +338,12 @@ def main():
 
     rmses = []
     steps_taken_vec = []
-    for tol in tols:
-        for i, eliminated_state in enumerate(states):
-            labels = [s for s in states if s not in eliminated_state]
-            A, B = mc.eliminate_state_from_transition_matrix(labels,
-                                                            use_parameters=True)
-
-            GKr_index = len(parameter_labels) - 1
-            default_parameters = np.array([val
-                                        for key, val in mc.default_values.items()
-                                        if (str(key) not in ['E_Kr', 'E_rev', 'V'] and val is not None)])
-
-            symbols = {}
-            symbols['v'] = sp.sympify('V')
-            symbols['p'] = sp.Matrix([sp.sympify(p) for p in parameter_labels])
-            symbols['y'] = sp.Matrix([mc.get_state_symbol(s)
-                                      for s in labels])
-            mm = MarkovModel(symbols, A, B, mc.rate_expressions,
-                            voltage=protocol_func,
-                            default_parameters=default_parameters,
-                            Q=Q, name=mc.name,
-                            parameter_labels=parameter_labels,
-                            GKr_index=GKr_index,
-                            E_rev=-80.0)
-            mm.protocol_description = protocol
-
-            steps_taken, res = count_solver_steps(mm, protocol, ts, tol=tol)
-            steps_taken_vec.append(steps_taken)
-
-            missing_state_res = 1.0 - res.sum(axis=1).flatten()
-            res = np.insert(res, i,
-                            missing_state_res, axis=1)
-            rmse = np.sqrt(np.mean((res - ref_res)**2))
-            rmses.append(rmse)
-            # plt.clf()
-            # plt.plot(ts, res)
-            # plt.savefig(os.path.join(output_dir, f"{eliminated_state}_{tol:1e}_sol.pdf"))
 
     rmses_full = []
     steps_taken_vec_full = []
 
     for tol in tols:
-        labels = states
-        A, B = mc.eliminate_state_from_transition_matrix(labels[:-1],
+        A, B = mc.eliminate_state_from_transition_matrix(label_order[:-1],
                                                         use_parameters=True)
 
         GKr_index = len(parameter_labels) - 1
@@ -395,7 +355,7 @@ def main():
         symbols['v'] = sp.sympify('V')
         symbols['p'] = sp.Matrix([sp.sympify(p) for p in parameter_labels])
         symbols['y'] = sp.Matrix([mc.get_state_symbol(s)
-                                    for s in labels])
+                                    for s in label_order])
         mm = MarkovModel(symbols, A, B, mc.rate_expressions,
                         voltage=protocol_func,
                         default_parameters=default_parameters,
@@ -411,6 +371,50 @@ def main():
         rmse = np.sqrt(np.mean((res - ref_res)**2))
         rmses_full.append(rmse)
 
+    for tol in tols:
+        for i, eliminated_state in enumerate(label_order):
+            labels = [s for s in label_order if s not in eliminated_state]
+            A, B = mc.eliminate_state_from_transition_matrix(labels,
+                                                            use_parameters=True)
+
+            GKr_index = len(parameter_labels) - 1
+            default_parameters = np.array([val
+                                        for key, val in mc.default_values.items()
+                                        if (str(key) not in ['E_Kr', 'E_rev', 'V'] and val is not None)])
+
+            symbols = {}
+            symbols['v'] = sp.sympify('V')
+            symbols['p'] = sp.Matrix([sp.sympify(p) for p in parameter_labels])
+            symbols['y'] = sp.Matrix([mc.get_state_symbol(s)
+                                      for s in labels])
+
+            mm = MarkovModel(symbols, A, B, mc.rate_expressions,
+                            voltage=protocol_func,
+                            default_parameters=default_parameters,
+                            Q=Q, name=mc.name,
+                            parameter_labels=parameter_labels,
+                            GKr_index=GKr_index,
+                            E_rev=-80.0)
+
+            mm.protocol_description = protocol
+
+            steps_taken, res = count_solver_steps(mm, protocol, ts, tol=tol)
+            steps_taken_vec.append(steps_taken)
+
+            missing_state_res = (1.0 - res.sum(axis=1)).flatten()
+
+            res = np.insert(res, i,
+                            missing_state_res, axis=1)
+
+            rmse = np.sqrt(np.mean((res - ref_res)**2))
+            rmses.append(rmse)
+
+            fig = plt.figure()
+            _ax = fig.subplots()
+            _ax.plot(ts, res)
+            # fig.savefig(os.path.join(output_dir, f"{eliminated_state}_{tol:1.1e}_sol.pdf"))
+            plt.close(fig)
+
     steps_taken_vec = np.array(steps_taken_vec).reshape(len(tols), -1)
     rmses = np.array(rmses).reshape(len(tols), -1)
 
@@ -423,7 +427,9 @@ def main():
         reduced_error_ax.plot(steps_taken_vec[:, i],
                               rmses[:, i],
                               label=state_labels[i],
-                              color=colours[i])
+                              color=colours[i],
+                              zorder=-i
+                              )
 
     # reduced_error_ax.plot(steps_taken_vec[:, -2], rmses[:, -2],
     #                       label="optimised", linestyle="--")
@@ -444,7 +450,6 @@ def main():
     full_error_ax.plot(steps_taken_vec[:, 0], rmses[:, 0],
                        label=states[0], color=colours[0])
 
-    print(steps_taken_vec[:, -1], rmses[:, -1])
     full_error_ax.plot(steps_taken_vec[:, -1], rmses[:, -1],
                        label="full", color="black", ls="--"
                        )
@@ -474,14 +479,16 @@ def main():
 
     main_fig.savefig(os.path.join(output_dir, "compare_reductions.pdf"))
 
-def get_reference_solution(mc, protocol, ts, voltage_func, tol=1e-10):
+def get_reference_solution(mc, protocol, ts, voltage_func, tol=1e-12):
     # start with equal proportion of channels in each state
-    state_labels, Q = mc.get_transition_matrix()
+    state_labels, Q = mc.get_transition_matrix(label_order=label_order)
+
     y0 = np.full(Q.shape[0], 1.0)
     y0 = y0 / float(len(y0))
 
     y = sp.Matrix([mc.get_state_symbol(s)
                    for s in state_labels])
+
     parameter_labels = [key
                         for key, val in mc.default_values.items()
                         if str(key) not in ['E_Kr', 'E_rev', 'V'] and val is not None]
