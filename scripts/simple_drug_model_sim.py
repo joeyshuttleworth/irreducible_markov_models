@@ -26,7 +26,7 @@ def main():
 
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("--output_dir", default='output')
-    arg_parser.add_argument("--figsize", default=[4.8, 5.5], type=float,
+    arg_parser.add_argument("--figsize", default=[4.8, 5.125], type=float,
                             nargs=2)
 
     global args
@@ -106,20 +106,12 @@ def main():
     protocol = []
     t_cur = 0
 
-    for event in mk_protocol.events():
-        duration = event.duration()
-        start_t = t_cur
-        end_t = start_t + duration
-        t_cur = end_t
-        level = event.level()
-        protocol.append((start_t, end_t, level, level))
-
-
-    protocol = np.array([[0, 1000.0, -80, -80],
-                         [1000.0, 2000.0, 0.0, 0.0],
-                         [2000.0, 2999.0, 40.0, 40.0],
-                         [2999.0, 4000.0, -80.0, -80.0]
+    protocol = np.array([[0, 5000.0, 0.0, 0.0],
+                         [5000.0, 10000.0, 0.0, 0.0],
+                         [10000.0, 19999.0, 0.0, 0.0],
+                         [19999.0, 30000.0, 0.0, 0.0]
                          ])
+
     protocol = np.vstack(protocol).astype(np.float64)
 
     # Define inputs for sympy function
@@ -199,17 +191,16 @@ def main():
 
     fig = plt.figure(figsize=args.figsize, constrained_layout=True)
 
-    axs = fig.subplots(3, 1, sharex=True, height_ratios=[.25, .25, 1])
-
+    axs = fig.subplots(2, 1, sharex=True, height_ratios=[.5, 1])
     Ds = np.array([drug_func(t, 0.0, protocol) for t in ts])
 
     axs[0].plot(ts, Ds, color="black")
     print(protocol)
     Vs = np.array([protocol_func(t, 0.0, protocol) for t in ts])
-    axs[1].plot(ts, Vs, color="black")
-    # axs[2].plot(ts, ys, label=state_labels)
+    # axs[1].plot(ts, Vs, color="black")
+    # axs[1].plot(ts, ys, label=state_labels)
 
-    occupations_ax = axs[2]
+    occupations_ax = axs[1]
     culm_states = np.full(ys.shape[0], 0.0)
     colours = sns.husl_palette(len(state_labels))
 
@@ -233,8 +224,8 @@ def main():
 
         culm_states += ys[:, i].flatten()
 
-    handles, labels = axs[2].get_legend_handles_labels()
-    axs[2].legend(handles[::-1], labels[::-1], frameon=True)
+    handles, labels = axs[1].get_legend_handles_labels()
+    axs[1].legend(handles[::-1], labels[::-1], frameon=True)
 
 
     for ax in axs:
@@ -244,20 +235,18 @@ def main():
     for ax in axs[:-1]:
         ax.set_xticklabels([])
 
-    axs[1].set_yticks([-80, 0, 40])
 
-    axs[2].set_xlim(0, ts.max())
-    axs[2].set_ylim(0, 1.0)
+    axs[1].set_xlim(0, ts.max())
+    axs[1].set_ylim(0, 1.0)
 
-    xticks = axs[2].get_xticks()
-    axs[2].set_xticks(xticks)
+    xticks = axs[1].get_xticks()
+    axs[1].set_xticks(xticks)
 
-    axs[2].set_xticklabels([float(x) * 1e-3 for x in xticks])
-    axs[2].set_xlabel(r"$t$ (s)")
+    axs[1].set_xticklabels([float(x) * 1e-3 for x in xticks])
+    axs[1].set_xlabel(r"$t$ (s)")
 
-    axs[1].set_ylabel(r"$V$ (mV)")
     axs[0].set_ylabel(r"$D$")
-    axs[2].set_ylabel(r"State occupancy")
+    axs[1].set_ylabel(r"State occupancy")
 
     for ax, cap in zip(axs, "abcdef"):
         ax.set_title(cap, loc="left", weight="bold")
