@@ -4,7 +4,8 @@
 using BifurcationKit
 using DifferentialEquations
 using ForwardDiff
-using Plots, Measures
+using Measures
+using Plots
 using LaTeXStrings
 using ColorSchemes
 
@@ -14,6 +15,9 @@ using PyCall
 # Import our python package with PyCall
 asp = pyimport("auxin_signalling_pathway")
 
+output_dir = "output/bifurcation_example"
+
+mkpath(output_dir)
 
 # Generate a "reduced" model with 1 ARF and 1 IAA. This model uses a QSS assumption for promoter
 # binding and unbinding
@@ -118,6 +122,9 @@ println(par_pp)
 prob = ODEProblem(f_deriv, z0, tspan, par_pp)
 sol = DifferentialEquations.solve(prob)
 z0 = sol[:, size(sol, 2)]
+
+s = plot(sol)
+savefig(s, "$(output_dir)/ode_sol.pdf")
 
 print("SS with auxin conc. = 10.0, ")
 println(Dict(zip(state_labels, z0)))
@@ -257,6 +264,8 @@ diagram2 = bifurcationdiagram(prob2, PALC(),
                               bothside=true
                               )
 
+println(diagram1)
+println(diagram2)
 
 scene = plot(diagram1; code=(), legend=true,
              vars=(:param, :iaa_tot))
@@ -274,13 +283,15 @@ hopf_points = [p for p in branch.specialpoint if string(p.type)=="hopf"]
 
 hopf_point = hopf_points[1]
 
-start_step = hopf_point.step - 1
-end_step = 15
+start_step = hopf_point.step + 10
+end_step = hopf_point.step - 10
 
-x1 = branch.sol[findfirst(x->x.step == start_step, branch.sol)]
-x2 = branch.sol[findfirst(x->x.step == end_step, branch.sol)]
+x1 = branch.sol[findfirst(x->x.step == start_step, branch.sol) + 1]
+x2 = branch.sol[argmin([abs(x.p - x1.p) for x in [x for x in branch.sol if sum((x1.x - x.x).^2) > 100]])]
 
-par_pp[param_index] = hopf_point.param + 0.01
+println(x1, x2)
+
+par_pp[param_index] = x1.p
 
 
 plot(diagram1, vars=(:param, :iaa_tot))
@@ -296,7 +307,7 @@ scatter!([param_val, param_val], [iaa_total_func(x1.x), iaa_total_func(x2.x)],
          legend = false,
 )
 
-plot!([par_pp[param_index], par_pp[param_index]],
+plot!([x1.p, x1.p],
       [iaa_total_func(x1.x), iaa_total_func(x2.x)], linestyle=:dash,
       color=:grey)
 
@@ -311,14 +322,16 @@ p1 = plot!(diagram2; code=(),
 
 N = 250
 ic_vec = [x2.x .+ t .* (x1.x .- x2.x) for t in range(0, 1, length=N)]
+p_vec = [x1.p for t in range(0, 1, length=N)]
 
 colors = range(0, 1, length=length(ic_vec))  # Normalize to [0,1]
 cmap = cgrad(:viridis, length(ic_vec))
 
 p2 = plot(ylabel="IAA conc. total", xlabel=L"t")
 
-for (i, z0) in enumerate(ic_vec)
+for (i, (z0, p)) in enumerate(zip(ic_vec, p_vec))
     local prob
+    par_pp[end] = p
     prob = ODEProblem(f_deriv, z0, tspan, par_pp)
     local sol
     sol = DifferentialEquations.solve(prob)
@@ -378,4 +391,4 @@ plot(p1, p2, p3; layout=my_layout,
      xgrid=false,
      ygrid=false)
 
-savefig("output/bifurcation_diagram.pdf")
+savefig("$(output_dir)/bifurcation_diagram.pdf")
