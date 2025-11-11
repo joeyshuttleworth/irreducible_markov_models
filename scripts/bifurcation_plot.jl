@@ -64,7 +64,7 @@ new_params["d__iaa__all"] = 0.1
 
 new_params["k__G__ARF_1__iaa_1__R__ARF_1"] = 0.0
 new_params["k__G__ARF_1__ARF_1__R__ARF_1"] = 1.0
-new_params["k__G__R__ARF_1"] = 0.0
+new_params["k__G__R__ARF_1"] = 0.0001
 
 new_params["k__G__ARF_1__ARF_1__R__iaa_1"] = 1.0
 new_params["k__G__ARF_1__iaa_1__R__iaa_1"] = 0.0
