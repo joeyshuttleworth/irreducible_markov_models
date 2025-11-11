@@ -64,11 +64,11 @@ new_params["d__iaa__all"] = 0.1
 
 new_params["k__G__ARF_1__iaa_1__R__ARF_1"] = 0.0
 new_params["k__G__ARF_1__ARF_1__R__ARF_1"] = 1.0
-new_params["k__G__R__ARF_1"] = 0.0001
+new_params["k__G__R__ARF_1"] = 0.0
 
 new_params["k__G__ARF_1__ARF_1__R__iaa_1"] = 1.0
 new_params["k__G__ARF_1__iaa_1__R__iaa_1"] = 0.0
-new_params["k__G__R__iaa_1"] = 0.0001
+new_params["k__G__R__iaa_1"] = 0.01
 
 
 # Insert new parameters, ensuring that all are present in the model
@@ -220,6 +220,7 @@ par_pp[length(par_pp)] = 0.0
 println(Dict(zip(state_labels, z0_2)))
 par_pp[length(par_pp)] = 0.0
 
+
 # bifurcation problem
 prob1 = BifurcationProblem(f_deriv, z0, par_pp,
                            # specify the continuation parameters
@@ -244,12 +245,12 @@ ds = (dsmax + dsmin) / 2.0
 
 opts_br = ContinuationPar(p_max = p_max, p_min=1e-6,
                           dsmax=dsmax, dsmin=dsmin, ds = ds,
-                          nev=10, max_steps=2000,
+                          nev=10, max_steps=10000,
                           detect_bifurcation=3)
 
-opts_br2 = ContinuationPar(p_max = p_max, p_min=1e-3,
+opts_br2 = ContinuationPar(p_max = p_max, p_min=1e-2,
                           dsmax=dsmax, dsmin=dsmin, ds = ds,
-                          nev=10, max_steps=2000,
+                          nev=10, max_steps=10000,
                           detect_bifurcation=3)
 
 diagram1 = bifurcationdiagram(prob1, PALC(),
@@ -274,20 +275,23 @@ dpi = 100
 size_inches = (4.25, 3.5)
 size_px = Tuple(round.(Int, dpi .* size_inches))
 
-branch = diagram1.γ
+branch1 = diagram1.γ
+branch2 = diagram2.γ
 
-fieldnames(typeof(branch))
-branch.specialpoint
+fieldnames(typeof(branch1))
 
-hopf_points = [p for p in branch.specialpoint if string(p.type)=="hopf"]
+hopf_points = [p for p in branch1.specialpoint if string(p.type)=="hopf"]
 
 hopf_point = hopf_points[1]
 
-start_step = hopf_point.step + 10
+start_step = hopf_point.step + 20
 end_step = hopf_point.step - 10
 
-x1 = branch.sol[findfirst(x->x.step == start_step, branch.sol) + 1]
-x2 = branch.sol[argmin([abs(x.p - x1.p) for x in [x for x in branch.sol if sum((x1.x - x.x).^2) > 100]])]
+x1 = branch1.sol[findfirst(x->x.step == start_step, branch1.sol) + 1]
+
+# Find point on branch2 which lines up most closely with chosen point on branch1
+x2 = branch2.sol[argmin([x.p > x1.p ? abs(x.p - x1.p)  : Inf
+                         for x in branch2.sol])]
 
 println(x1, x2)
 
@@ -316,13 +320,14 @@ p1 = plot!(diagram2; code=(),
            legend=false,
            ylabel="IAA conc. total",
            xlabel=L"d_I",
+           ylims=(0, 250),
            guidefontsize=9,
            labelfontsize=9
            )
 
-N = 250
-ic_vec = [x2.x .+ t .* (x1.x .- x2.x) for t in range(0, 1, length=N)]
-p_vec = [x1.p for t in range(0, 1, length=N)]
+no_trajectories = 1000
+ic_vec = [x2.x .+ t .* (x1.x .- x2.x) for t in range(0, 1.0, length=no_trajectories)]
+p_vec = [x1.p for t in range(0, 1, length=no_trajectories)]
 
 colors = range(0, 1, length=length(ic_vec))  # Normalize to [0,1]
 cmap = cgrad(:viridis, length(ic_vec))
@@ -343,7 +348,7 @@ end
 xticks = ([0, round(Int, maximum(sol.t))], [0, "1"])
 
 p2 = plot!(colorbar=false, xticks=xticks,
-guidefontsize=9,
+           guidefontsize=9,
            labelfontsize=9
            )
 
