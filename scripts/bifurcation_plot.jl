@@ -13,7 +13,7 @@ using ColorSchemes
 using PyCall
 
 # Import our python package with PyCall
-asp = pyimport("auxin_signalling_pathway")
+asp = pyimport("auxin_signalling_models")
 
 output_dir = "output/bifurcation_example"
 
@@ -113,7 +113,7 @@ push!(par_pp, 10.0)
 println(par_pp)
 
 # Solve system with high and low auxin
-tspan = (0.0, 10000.0)
+tspan = (0.0, 1e4)
 z0 = Float64.(collect(values(sort(asp_model.get_default_initial_conditions()))))
 println(z0)
 println(param_dict)
@@ -193,20 +193,21 @@ end
 recordFromSolution(x, p; k...) = (rna_iaa_tot=iaa_rna_total_func(x), iaa_tot=iaa_total_func(x),
                                   arf1_rna=arf_rna_func(x, 1), arf_tot=arf_total_func(x))
 
-# z0_2 = copy(Float64.(collect(values(sort(asp_model.get_default_initial_conditions())))))
-par_pp[length(par_pp)] = 0.0
-par_pp[param_index] = 0.0349
+z0_2 = copy(Float64.(collect(values(sort(asp_model.get_default_initial_conditions())))))
 
 z0_2 = [0.003942030760178107, 7.769803257093408e-5,
         0.011156888791130574, 1.6020504429472349, 0.007884061520356214,
         0.007884061520356214, 0.5660477794265649]
 
+
+par_pp[end] = 0.0
+par_pp[param_index] = 0.0349
+
 prob = ODEProblem(f_deriv, z0_2, tspan, par_pp)
 sol = DifferentialEquations.solve(prob)
 z0_2 = sol[:, size(sol, 2)]
 
 println(Dict(zip(state_labels, z0_2)))
-par_pp[length(par_pp)] = 0.0
 
 prob = ODEProblem(f_deriv, z0_2, tspan, par_pp)
 sol = DifferentialEquations.solve(prob)
@@ -214,12 +215,7 @@ sol = DifferentialEquations.solve(prob)
 z0_2 = sol[:, size(sol, 2)]
 
 println(Dict(zip(state_labels, z0_2)))
-
-par_pp[length(par_pp)] = 0.0
-
 println(Dict(zip(state_labels, z0_2)))
-par_pp[length(par_pp)] = 0.0
-
 
 # bifurcation problem
 prob1 = BifurcationProblem(f_deriv, z0, par_pp,
@@ -227,7 +223,6 @@ prob1 = BifurcationProblem(f_deriv, z0, par_pp,
                            (@optic _[param_index]),
                            record_from_solution=recordFromSolution,
                            )
-
 
 prob2 = BifurcationProblem(f_deriv, z0_2, par_pp,
                            # specify the continuation parameters
@@ -297,22 +292,22 @@ println(x1, x2)
 
 par_pp[param_index] = x1.p
 
-
 plot(diagram1, vars=(:param, :iaa_tot))
 c_start = get(ColorSchemes.viridis, 1.0)
 c_end   = get(ColorSchemes.viridis, 0.0 )
 
-param_val = par_pp[param_index]
+no_trajectories = 250
+ic_vec = [x1.x .+ t .* (x2.x .- x1.x) for t in range(0, 1.0, length=no_trajectories)]
 
-scatter!([param_val, param_val], [iaa_total_func(x1.x), iaa_total_func(x2.x)],
+scatter!([x1.p, x1.p], [iaa_total_func(x1.x), iaa_total_func(ic_vec[end])],
          markershape = :x,
          markerstrokewidth=1.0,
          color = [c_start, c_end],
          legend = false,
-)
+         )
 
 plot!([x1.p, x1.p],
-      [iaa_total_func(x1.x), iaa_total_func(x2.x)], linestyle=:dash,
+      [iaa_total_func(x1.x), iaa_total_func(ic_vec[end])], linestyle=:dash,
       color=:grey)
 
 p1 = plot!(diagram2; code=(),
@@ -325,8 +320,6 @@ p1 = plot!(diagram2; code=(),
            labelfontsize=9
            )
 
-no_trajectories = 1000
-ic_vec = [x2.x .+ t .* (x1.x .- x2.x) for t in range(0, 1.0, length=no_trajectories)]
 p_vec = [x1.p for t in range(0, 1, length=no_trajectories)]
 
 colors = range(0, 1, length=length(ic_vec))  # Normalize to [0,1]
@@ -334,9 +327,9 @@ cmap = cgrad(:viridis, length(ic_vec))
 
 p2 = plot(ylabel="IAA conc. total", xlabel=L"t")
 
-for (i, (z0, p)) in enumerate(zip(ic_vec, p_vec))
+for (i, z0) in enumerate(reverse(ic_vec))
     local prob
-    par_pp[end] = p
+    # par_pp[param_index] = p
     prob = ODEProblem(f_deriv, z0, tspan, par_pp)
     local sol
     sol = DifferentialEquations.solve(prob)
@@ -345,7 +338,7 @@ for (i, (z0, p)) in enumerate(zip(ic_vec, p_vec))
     label=false, line_z=iaa_total_func(z0), cmap=:viridis)
 end
 
-xticks = ([0, round(Int, maximum(sol.t))], [0, "1"])
+xticks = ([0, round(Int, maximum(sol.t))], [0, maximum(sol.t)])
 
 p2 = plot!(colorbar=false, xticks=xticks,
            guidefontsize=9,
@@ -360,7 +353,7 @@ tspan = (0.0, 5e5)
 scene = plot(xlabel="ARF conc. total")
 
 xlim_max = 0.0
-for (i, z0) in enumerate(ic_vec)
+for (i, z0) in enumerate(reverse(ic_vec))
     local prob
     prob = ODEProblem(f_deriv, z0, tspan, par_pp)
     local sol
