@@ -136,7 +136,7 @@ def main():
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    fig.savefig(os.path.join(output_dir, "markov_model_trajectories"))
+    fig.savefig(os.path.join(output_dir, "markov_model_trajectories.pdf"))
 
 
 if __name__ == "__main__":

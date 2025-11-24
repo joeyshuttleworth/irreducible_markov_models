@@ -1,6 +1,4 @@
-## Import some useful packages
-
-# Used for plotting bifurcation diagrams and ODE solutions
+using ArgParse
 using BifurcationKit
 using DifferentialEquations
 using ForwardDiff
@@ -15,9 +13,33 @@ using PyCall
 # Import our python package with PyCall
 asp = pyimport("auxin_signalling_models")
 
-output_dir = "output/bifurcation_example"
+s = ArgParseSettings()
+@add_arg_table s begin
+    "--output"
+    "-o"
+    default = py"None"
+    help = "Path to store output"
+end
 
-mkpath(output_dir)
+parsed_args = parse_args(ARGS, s)
+
+dir = pwd()                       # Or replace with explicit path
+sys = pyimport("sys")
+push!(sys."path", dir)
+push!(sys."path", "scripts")
+println(pyimport("os").getcwd())
+
+py"""
+import sys
+
+print(sys.path)
+"""
+
+setup_output = pyimport("setup_output");
+output_dir = setup_output.setup_output_directory(parsed_args["output"],
+                                                 "bifurcation_plot")
+output_dir = string(output_dir)
+println(output_dir)
 
 # Generate a "reduced" model with 1 ARF and 1 IAA. This model uses a QSS assumption for promoter
 # binding and unbinding
@@ -376,9 +398,13 @@ p3 = plot!(colorbar=true, ylabel="", yticks=false,
 # 'a' is top, 'b' and 'c' are bottom
 my_layout = @layout [a; [b c]]
 
-annotate!(p1, (0, 250, text(L"\mathbf{a}", 12, :black, :left)))
-annotate!(p2, (0, 500, text(L"\mathbf{b}", 12, :black, :left)))
-annotate!(p3, (0, 500, text(L"\mathbf{c}", 12, :black, :left)))
+p1_ymax = maximum(ylims(p1))
+p2_ymax = maximum(ylims(p2))
+p3_ymax = maximum(ylims(p3))
+
+annotate!(p1, (0, p1_ymax + 15, text(L"\mathbf{a}", 12, :black, :left)))
+annotate!(p2, (0, p2_ymax + 15*1.4, text(L"\mathbf{b}", 12, :black, :left)))
+annotate!(p3, (0, p3_ymax + 15*1.4, text(L"\mathbf{c}", 12, :black, :left)))
 
 plot(p1, p2, p3; layout=my_layout,
      labelfontsize=9,

@@ -18,6 +18,8 @@ import matplotlib.gridspec as gridspec
 
 import seaborn as sns
 
+from setup_output import setup_output_directory
+
 
 font = {
         'size'   : 11
@@ -66,18 +68,15 @@ def setup_grid(fig):
 def main():
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("--model", default='Wang')
-    arg_parser.add_argument("--output_dir", default='output')
-    arg_parser.add_argument("--figsize", default=[4.5, 5.5], type=float,
+    arg_parser.add_argument("--output_dir", default=None)
+    arg_parser.add_argument("--figsize", default=[4.2, 5.5], type=float,
                             nargs=2)
 
     global args
     args = arg_parser.parse_args()
 
-    output_dir = os.path.join(args.output_dir,
-                              "compare_model_reductions")
-
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
+    output_dir = setup_output_directory(args.output_dir,
+                                        "degenerate_model_demo")
 
     # Setup protocol
     mk_protocol = mk.load_protocol("simplified-staircase.mmt")

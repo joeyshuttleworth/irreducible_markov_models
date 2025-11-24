@@ -1,8 +1,10 @@
-from auxin_signalling_pathway.reduced_auxin_signalling_pathway import \
+from auxin_signalling_models.reduced_auxin_signalling_pathway import \
     reduced_auxin_signalling_pathway as reduced_asp_class
-from auxin_signalling_pathway import auxin_signalling_pathway as asp_class
+from auxin_signalling_models import auxin_signalling_pathway as asp_class
 import matplotlib.gridspec as gridspec
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+
+from setup_output import setup_output_directory
 
 import matplotlib.pyplot as plt
 import matplotlib as mpl
@@ -26,7 +28,7 @@ def main():
     kwargs = {'nARFs': 1, 'nIAAs': 1}
 
     arg_parser = argparse.ArgumentParser("description")
-    arg_parser.add_argument("-o", "--output_dir", type=str, default="output")
+    arg_parser.add_argument("-o", "--output_dir", type=str, default=None)
     arg_parser.add_argument("--figsize",  type=float, nargs=2, default=[6, 5],)
 
     # Plot IAA RNA
@@ -60,10 +62,8 @@ def main():
     scatter_rmse_ax.set_title("d", loc="left", weight="bold")
 
     global output_dir
-    output_dir = os.path.join(args.output_dir, "degenerate_model_demo")
-
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
+    output_dir = setup_output_directory(args.output_dir,
+                                        "degenerate_model_demo")
 
     asp_model_r = reduced_asp_class(**kwargs, include_arf_transcription=True)
     asp_model_full = asp_class(**kwargs, include_arf_transcription=True)
@@ -185,8 +185,9 @@ def main():
         "R__iaa_1": r"$R_I$",
         "R__ARF_1": r"$R_A$",
     }
+
     labels = [relabel_dict[k] if k in relabel_dict else k
-              for k in reduced_ic_dict.keys()]
+              for k in sorted(reduced_ic_dict.keys())]
 
     states_included_indices = [i for i in range(len(labels))
                                if labels[i][:3] != r"$R_"]
@@ -216,7 +217,7 @@ def main():
     print(full_ic_dict.keys())
     fig2 = plt.figure()
     ax = fig2.subplots()
-    ax.plot(ts, sol2 / sol2[-1, :], label=full_ic_dict.keys())
+    ax.plot(ts, sol2, label=full_ic_dict.keys())
     ax.legend()
 
     odes, free_variables, transition_rates, \
@@ -253,8 +254,9 @@ def main():
     # _cax.set_visible(False)
     # divider = make_axes_locatable(convergence_ax)
     # cax = divider.append_axes('right', size='10%', pad=0.05)
-    cbar = fig.colorbar(mpl.cm.ScalarMappable(norm=mpl.colors.LogNorm(tau_vals.min(), tau_vals.max()),
-                                       cmap='rocket'), cax=cax,
+    cbar = fig.colorbar(mpl.cm.ScalarMappable(norm=mpl.colors.LogNorm(
+        tau_vals.min(), tau_vals.max()),
+                                              cmap='rocket'), cax=cax,
                         orientation='vertical', ax=plt.gca(), shrink=1.0, pad=0.0)
     cbar.ax.tick_params(labelsize=9)  # Set tick label font size to 14
 

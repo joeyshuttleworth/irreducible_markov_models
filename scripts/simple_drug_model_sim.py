@@ -9,8 +9,6 @@ from markov_builder.example_models import construct_wang_chain, construct_four_s
 from markov_builder import MarkovChain
 from markov_builder.rate_expressions import negative_rate_expr, positive_rate_expr
 
-from numbalsoda import lsoda, lsoda_sig
-
 import os
 import numpy as np
 import myokit as mk
@@ -19,14 +17,16 @@ import seaborn as sns
 
 from numba import njit
 
+from setup_output import setup_output_directory
+
 tol = 1e-12
 
 
 def main():
 
     arg_parser = argparse.ArgumentParser()
-    arg_parser.add_argument("--output_dir", default='output')
-    arg_parser.add_argument("--figsize", default=[4.8, 5.125], type=float,
+    arg_parser.add_argument("--output_dir")
+    arg_parser.add_argument("--figsize", default=[4.25, 5.125], type=float,
                             nargs=2)
 
     global args
@@ -37,6 +37,8 @@ def main():
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
+
+    output_dir = setup_output_directory(args.output_dir, "simple_drug_model")
 
     mc = construct_wang_chain()
 
@@ -150,7 +152,7 @@ def main():
         return dy
 
     sol = solve_ivp(f_deriv, (-1e4, 0), y0, atol=tol, rtol=tol,
-                    dense_output=True, #jac=jac_func,
+                    dense_output=True, method="LSODA",#jac=jac_func,
                     args=(param_values,))
 
     y0 = sol.y[:, -1].flatten()
