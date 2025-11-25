@@ -68,7 +68,7 @@ def setup_grid(fig):
 def main():
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("--model", default='Wang')
-    arg_parser.add_argument("--output_dir", default=None)
+    arg_parser.add_argument("--output_dir", "-o", default=None)
     arg_parser.add_argument("--figsize", default=[4.2, 5.5], type=float,
                             nargs=2)
 
@@ -76,7 +76,7 @@ def main():
     args = arg_parser.parse_args()
 
     output_dir = setup_output_directory(args.output_dir,
-                                        "degenerate_model_demo")
+                                        "compare_model_reductions")
 
     # Setup protocol
     mk_protocol = mk.load_protocol("simplified-staircase.mmt")

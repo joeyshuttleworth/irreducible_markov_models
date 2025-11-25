@@ -25,7 +25,7 @@ tol = 1e-12
 def main():
 
     arg_parser = argparse.ArgumentParser()
-    arg_parser.add_argument("--output_dir")
+    arg_parser.add_argument("--output_dir", "-o")
     arg_parser.add_argument("--figsize", default=[4.25, 5.125], type=float,
                             nargs=2)
 

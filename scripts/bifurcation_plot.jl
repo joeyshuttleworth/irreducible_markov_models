@@ -16,7 +16,6 @@ asp = pyimport("auxin_signalling_models")
 s = ArgParseSettings()
 @add_arg_table s begin
     "--output"
-    "-o"
     default = py"None"
     help = "Path to store output"
 end
