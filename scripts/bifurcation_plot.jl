@@ -7,11 +7,12 @@ using Plots
 using LaTeXStrings
 using ColorSchemes
 
-# Needed for interfacing with Python package
+
 using PyCall
 
 # Import our python package with PyCall
 asp = pyimport("auxin_signalling_models")
+
 
 s = ArgParseSettings()
 @add_arg_table s begin
@@ -34,7 +35,7 @@ import sys
 print(sys.path)
 """
 
-setup_output = pyimport("setup_output");
+setup_output = pyimport("setup_output")
 output_dir = setup_output.setup_output_directory(parsed_args["output"],
                                                  "bifurcation_plot")
 output_dir = string(output_dir)
@@ -42,11 +43,10 @@ println(output_dir)
 
 # Generate a "reduced" model with 1 ARF and 1 IAA. This model uses a QSS assumption for promoter
 # binding and unbinding
-
 # MP is denoted ARF_1 and BDL denoted iaa_1. You could change this if you really wanted to
 
-asp_model = asp.reduced_auxin_signalling_pathway(nARFs=1, nIAAs=1,
-                                                 include_arf_transcription=true)
+asp_model = asp.ReducedAuxinSignallingPathway(nARFs=1, nIAAs=1,
+                                              include_arf_transcription=true)
 
 # Print out default parameter labels
 param_dict = asp_model.get_default_parameters()
@@ -55,9 +55,9 @@ param_labels = sort(collect(keys(param_dict)))
 println(param_labels)
 
 # Get the "substitution" dictionary which can be used to modify the parameterisation
-parameter_subs_dict = asp_model.get_param_substitution_dict()
+parameter_subs_dict = asp_model.get_parameter_substitution_dict()
 
-state_labels = asp_model.get_state_variables()
+state_labels = asp_model.get_state_variable_names(include_promoter_vars=false)
 
 println("states are $(state_labels)")
 
@@ -80,16 +80,16 @@ new_params["d__iaa_1__x"] = 1.0
 
 new_params["k__G__ARF_1__ARF_1__R__iaa_1"] = 1.0
 
-new_params["d__arf__all"] = 2.0
+new_params["d__arf__all"] = 1.0
 new_params["d__iaa__all"] = 0.1
 
-new_params["k__G__ARF_1__iaa_1__R__ARF_1"] = 0.0
 new_params["k__G__ARF_1__ARF_1__R__ARF_1"] = 1.0
+new_params["k__G__ARF_1__iaa_1__R__ARF_1"] = 0.0
 new_params["k__G__R__ARF_1"] = 0.0001
 
 new_params["k__G__ARF_1__ARF_1__R__iaa_1"] = 1.0
 new_params["k__G__ARF_1__iaa_1__R__iaa_1"] = 0.0
-new_params["k__G__R__iaa_1"] = 0.01
+new_params["k__G__R__iaa_1"] = 0.025
 
 
 # Insert new parameters, ensuring that all are present in the model
@@ -102,8 +102,6 @@ for key in keys(new_params)
         println("WARNING param $(key) is not in param dict")
     end
 end
-
-println(param_dict)
 
 # Generate derivative function using the Python package
 f_deriv_func = asp_model.output_julia()
@@ -144,13 +142,12 @@ prob = ODEProblem(f_deriv, z0, tspan, par_pp)
 sol = DifferentialEquations.solve(prob)
 z0 = sol[:, size(sol, 2)]
 
-s = plot(sol)
+legend_labels = reshape(state_labels, 1, length(state_labels))
+s = plot(sol, label=legend_labels, legend=true)
 savefig(s, "$(output_dir)/ode_sol.pdf")
 
 print("SS with auxin conc. = 10.0, ")
 println(Dict(zip(state_labels, z0)))
-
-legend_labels = reshape(state_labels, 1, length(state_labels))
 
 xlabel = "d__iaa__all"
 param_index = findfirst(==(xlabel), param_labels)
@@ -193,7 +190,7 @@ end
 
 
 function arf_rna_func(x, arf_index=nothing)
-    arfs = asp_model.arf_symbols
+    arfs = sort([x.name for x in asp_model.arf_variables])
     ret_vec = [0.0 for a in arfs]
 
     if arf_index === nothing
@@ -220,9 +217,8 @@ z0_2 = [0.003942030760178107, 7.769803257093408e-5,
         0.011156888791130574, 1.6020504429472349, 0.007884061520356214,
         0.007884061520356214, 0.5660477794265649]
 
-
 par_pp[end] = 0.0
-par_pp[param_index] = 0.0349
+par_pp[param_index] = 0.1
 
 prob = ODEProblem(f_deriv, z0_2, tspan, par_pp)
 sol = DifferentialEquations.solve(prob)
@@ -264,7 +260,7 @@ opts_br = ContinuationPar(p_max = p_max, p_min=1e-6,
                           nev=10, max_steps=10000,
                           detect_bifurcation=3)
 
-opts_br2 = ContinuationPar(p_max = p_max, p_min=1e-2,
+opts_br2 = ContinuationPar(p_max = p_max, p_min=0.001,
                           dsmax=dsmax, dsmin=dsmin, ds = ds,
                           nev=10, max_steps=10000,
                           detect_bifurcation=3)
@@ -296,28 +292,37 @@ branch2 = diagram2.γ
 
 fieldnames(typeof(branch1))
 
-hopf_points = [p for p in branch1.specialpoint if string(p.type)=="hopf"]
+# hopf_points = [p for p in branch1.specialpoint if string(p.type)=="hopf"]
+# hopf_point = hopf_points[1]
 
-hopf_point = hopf_points[1]
+bf_points = [p for p in branch1.specialpoint if string(p.type)=="bp"]
 
-start_step = hopf_point.step + 20
-end_step = hopf_point.step - 10
+target_p = 0.055
+# Assume only 1 special point on branch
+if length(bf_points) > 0
+    bf_point = bf_points[1]
+    x1 = branch1.sol[argmin([x.step > bf_point.step ? abs(x.p - target_p) : Inf
+                             for x in  branch1.sol])]
+    println("here", x1)
 
-x1 = branch1.sol[findfirst(x->x.step == start_step, branch1.sol) + 1]
-
-# Find point on branch2 which lines up most closely with chosen point on branch1
-x2 = branch2.sol[argmin([x.p > x1.p ? abs(x.p - x1.p)  : Inf
-                         for x in branch2.sol])]
+    # Find point on branch2 which lines up most closely with chosen point on branch1
+    x2 = branch1.sol[argmin([x.step < bf_point.step ? abs(x.p - target_p) : Inf for x in branch1.sol])]
+else
+    # Default to start/end point
+    bf_point = branch1.specialpoint[end]
+    x1 = branch1.sol[end]
+    x2 = branch2.sol[end]
+end
 
 println(x1, x2)
 
-par_pp[param_index] = x1.p
+par_pp[param_index] = target_p
 
 plot(diagram1, vars=(:param, :iaa_tot))
 c_start = get(ColorSchemes.viridis, 1.0)
 c_end   = get(ColorSchemes.viridis, 0.0 )
 
-no_trajectories = 250
+no_trajectories = 1000
 ic_vec = [x1.x .+ t .* (x2.x .- x1.x) for t in range(0, 1.0, length=no_trajectories)]
 
 scatter!([x1.p, x1.p], [iaa_total_func(x1.x), iaa_total_func(ic_vec[end])],
@@ -336,7 +341,7 @@ p1 = plot!(diagram2; code=(),
            legend=false,
            ylabel="IAA conc. total",
            xlabel=L"d_I",
-           ylims=(0, 250),
+           ylims=(0, 1000),
            guidefontsize=9,
            labelfontsize=9
            )
@@ -363,7 +368,7 @@ xticks = ([0, round(Int, maximum(sol.t))], [0, maximum(sol.t)])
 
 p2 = plot!(colorbar=false, xticks=xticks,
            guidefontsize=9,
-           labelfontsize=9
+           labelfontsize=9,
            )
 
 colors = range(0, 1, length=length(ic_vec))  # Normalize to [0,1]
@@ -401,6 +406,9 @@ p1_ymax = maximum(ylims(p1))
 p2_ymax = maximum(ylims(p2))
 p3_ymax = maximum(ylims(p3))
 
+p2 = plot!(p2, ylims=(0, p2_ymax))
+p3 = plot!(p3, ylims=(0, p2_ymax))
+
 annotate!(p1, (0, p1_ymax + 15, text(L"\mathbf{a}", 12, :black, :left)))
 annotate!(p2, (0, p2_ymax + 15*1.4, text(L"\mathbf{b}", 12, :black, :left)))
 annotate!(p3, (0, p3_ymax + 15*1.4, text(L"\mathbf{c}", 12, :black, :left)))
@@ -415,3 +423,13 @@ plot(p1, p2, p3; layout=my_layout,
      ygrid=false)
 
 savefig("$(output_dir)/bifurcation_diagram.pdf")
+
+param_name_dict = Dict(asp_model.pretty_print_parameter_dict())
+
+dict = Dict(p => (pretty_par, param_dict[p])
+            for (p, pretty_par) in param_name_dict)
+
+println(param_dict)
+println(dict)
+
+
