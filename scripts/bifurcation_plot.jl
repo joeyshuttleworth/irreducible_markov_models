@@ -89,7 +89,7 @@ new_params["k__G__R__ARF_1"] = 0.0001
 
 new_params["k__G__ARF_1__ARF_1__R__iaa_1"] = 1.0
 new_params["k__G__ARF_1__iaa_1__R__iaa_1"] = 0.0
-new_params["k__G__R__iaa_1"] = 0.025
+new_params["k__G__R__iaa_1"] = 0.015
 
 
 # Insert new parameters, ensuring that all are present in the model
@@ -297,16 +297,14 @@ fieldnames(typeof(branch1))
 
 bf_points = [p for p in branch1.specialpoint if string(p.type)=="bp"]
 
-target_p = 0.055
+target_p = 0.05
 # Assume only 1 special point on branch
 if length(bf_points) > 0
     bf_point = bf_points[1]
     x1 = branch1.sol[argmin([x.step > bf_point.step ? abs(x.p - target_p) : Inf
                              for x in  branch1.sol])]
-    println("here", x1)
-
     # Find point on branch2 which lines up most closely with chosen point on branch1
-    x2 = branch1.sol[argmin([x.step < bf_point.step ? abs(x.p - target_p) : Inf for x in branch1.sol])]
+    x2 = branch2.sol[argmin([abs(x.p - target_p) for x in branch2.sol])]
 else
     # Default to start/end point
     bf_point = branch1.specialpoint[end]
