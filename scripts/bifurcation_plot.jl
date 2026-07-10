@@ -13,6 +13,15 @@ using PyCall
 # Import our python package with PyCall
 asp = pyimport("auxin_signalling_models")
 
+default(
+    titlefont = font(11),
+    guidefont = font(8),      # axis labels
+    tickfont = font(8),
+    legendfont = font(8),
+    grid=false,
+    titlelocation=:left
+)
+
 
 s = ArgParseSettings()
 @add_arg_table s begin
@@ -340,8 +349,10 @@ p1 = plot!(diagram2; code=(),
            ylabel="IAA conc. total",
            xlabel=L"d_I",
            ylims=(0, 1000),
-           guidefontsize=9,
-           labelfontsize=9
+           # guidefontsize=9,
+           # labelfontsize=9,
+           titleloc=:left,
+           title=L"\mathbf{a}"
            )
 
 p_vec = [x1.p for t in range(0, 1, length=no_trajectories)]
@@ -362,9 +373,7 @@ for (i, z0) in enumerate(reverse(ic_vec))
     label=false, line_z=iaa_total_func(z0), cmap=:viridis)
 end
 
-xticks = ([0, round(Int, maximum(sol.t))], [0, maximum(sol.t)])
-
-p2 = plot!(colorbar=false, xticks=xticks,
+p2 = plot!(colorbar=false, xtickformatter=:scientific,
            guidefontsize=9,
            labelfontsize=9,
            )
@@ -372,7 +381,7 @@ p2 = plot!(colorbar=false, xticks=xticks,
 colors = range(0, 1, length=length(ic_vec))  # Normalize to [0,1]
 cmap = cgrad(:viridis, length(ic_vec))
 
-tspan = (0.0, 5e5)
+tspan = (0.0, 1e5)
 
 scene = plot(xlabel="ARF conc. total")
 
@@ -390,9 +399,9 @@ for (i, z0) in enumerate(reverse(ic_vec))
                label=false, line_z=iaa_total_func(z0), cmap=:viridis)
 end
 
-xticks = [0, round(Int, xlim_max)]
+# xticks = [0, round(Int, xlim_max)]
 p3 = plot!(colorbar=true, ylabel="", yticks=false,
-           xticks=xticks,
+           xrotation=90,
            guidefontsize=9,
            labelfontsize=9
            )
@@ -404,27 +413,24 @@ p1_ymax = maximum(ylims(p1))
 p2_ymax = maximum(ylims(p2))
 p3_ymax = maximum(ylims(p3))
 
-p2 = plot!(p2, ylims=(0, p2_ymax))
-p3 = plot!(p3, ylims=(0, p2_ymax))
+p2 = plot!(p2, ylims=(0, p2_ymax), titleloc=:left, title=L"$\mathbf{b}$", xticks=[0, 10^4],
+           xlims=(0, 10^4),
+           xticklabels=[0, L"$10^4$"])
 
-annotate!(p1, (0, p1_ymax + 15, text(L"\mathbf{a}", 12, :black, :left)))
-annotate!(p2, (0, p2_ymax + 15*1.4, text(L"\mathbf{b}", 12, :black, :left)))
-annotate!(p3, (0, p3_ymax + 15*1.4, text(L"\mathbf{c}", 12, :black, :left)))
+p3 = plot!(p3, ylims=(0, p2_ymax), titleloc=:left, title=L"$\mathbf{c}$", xlim=(0, :auto), xrotation=90)
 
 plot(p1, p2, p3; layout=my_layout,
-     labelfontsize=9,
-     guidefontsize=9,
      size=size_px,
-     leftmargin=2mm,
      dpi=dpi,
      xgrid=false,
-     ygrid=false)
+     ygrid=false
+     )
 
 savefig("$(output_dir)/bifurcation_diagram.pdf")
 
-param_name_dict = Dict(asp_model.pretty_print_parameter_dict())
+param_name_dict = Dict(asp_model.generate_pretty_print_parameter_dict())
 
-dict = Dict(p => (pretty_par, param_dict[p])
+dict = Dict(p => (p in keys(param_dict) ? (pretty_par, param_dict[p]) : (p, "NaN"))
             for (p, pretty_par) in param_name_dict)
 
 println(param_dict)

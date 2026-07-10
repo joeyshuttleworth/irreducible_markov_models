@@ -1,5 +1,5 @@
 from auxin_signalling_models.reduced_auxin_signalling_pathway import \
-    reduced_auxin_signalling_pathway as reduced_asp_class
+    ReducedAuxinSignallingPathway as reduced_asp_class
 from auxin_signalling_models import auxin_signalling_pathway as asp_class
 import matplotlib.gridspec as gridspec
 from mpl_toolkits.axes_grid1 import make_axes_locatable

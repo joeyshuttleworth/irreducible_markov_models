@@ -35,7 +35,7 @@ def setup_grid(fig):
                            height_ratios=[0.25, 0.5, 1, 1, 1.5],
                            width_ratios=[1, 1])
 
-    axs = [None] * 6
+    axs = [None] * 5
 
     # Voltage ax
     axs[1] = fig.add_subplot(gs[0, :])
@@ -49,10 +49,7 @@ def setup_grid(fig):
     axs[3] = fig.add_subplot(gs[3, :])
 
     # Error in reduced models ax
-    axs[4] = fig.add_subplot(gs[4, 0])
-
-    # Error in full model ax
-    axs[5] = fig.add_subplot(gs[4, 1])
+    axs[4] = fig.add_subplot(gs[4, :])
 
     for ax in axs:
         for side in ["top", "right"]:
@@ -86,8 +83,7 @@ def main():
     main_fig = plt.figure(figsize=args.figsize,
                           constrained_layout=True)
 
-    voltage_ax, legend_ax, occupations_ax, current_ax, reduced_error_ax, \
-        full_error_ax = setup_grid(main_fig)
+    voltage_ax, legend_ax, occupations_ax, current_ax, reduced_error_ax = setup_grid(main_fig)
 
     for event in mk_protocol.events():
         duration = event.duration()
@@ -446,33 +442,19 @@ def main():
     steps_taken_vec = np.hstack([steps_taken_vec, steps_taken_vec1[:, None],
                                  np.array(steps_taken_vec_full)[:, None]])
 
-    full_error_ax.plot(steps_taken_vec[:, 0], rmses[:, 0],
-                       label=states[0], color=colours[0])
-
-    full_error_ax.plot(steps_taken_vec[:, -1], rmses[:, -1],
-                       label="full", color="black", ls="--"
-                       )
+    reduced_error_ax.plot(steps_taken_vec[:, -1], rmses[:, -1],
+                          label="full", color="black", ls="--"
+                          )
 
     reduced_error_ax.set_ylabel("RMSE")
     reduced_error_ax.set_xlabel("Function evaluations")
-    full_error_ax.set_xlabel("Function evaluations")
-
-    full_error_ax.set_yscale('log')
-    full_error_ax.set_xscale('log')
-
-    # full_error_ax.legend(frameon=False, ncol=2, fontsize=9)
 
     reduced_error_ax.set_ylim([1e-8, 1e-2])
-    full_error_ax.set_ylim(reduced_error_ax.get_ylim())
-    full_error_ax.set_yticks([])
 
     occupations_ax.set_xticks([])
     voltage_ax.set_xticks([])
 
     reduced_error_ax.tick_params(axis='x', labelrotation=90)
-    full_error_ax.tick_params(axis='x', labelrotation=90)
-
-    reduced_error_ax.set_xlim([1e3, 1.1e4])
 
     current_ax.set_ylabel(r"$I_\text{Kr}$ (nA)")
 
