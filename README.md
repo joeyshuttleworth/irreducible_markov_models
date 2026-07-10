@@ -29,4 +29,8 @@ Open jupyter by running
 python3 -m jupyter-notebook notebooks/model_reduction_demonstration.ipynb
 ```
 
-You should now be able to run the code in the notebook
+You should now be able to run the code in the notebook. All Figures for the paper can be created by running the bash script from this root directory like so:
+
+```
+./create_figures.sh
+```
