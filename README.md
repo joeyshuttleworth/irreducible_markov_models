@@ -9,6 +9,7 @@ Repository for paper on Irreducible Markov Models in Mathematical Biology.
 * Python >= 3.11
 * Pip
 * [Myokit](https://myokit.org)
+* A Julia installation
 
 ### Installing
 

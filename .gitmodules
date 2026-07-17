@@ -1,0 +1,13 @@
+[submodule "submodules/MarkovModels"]
+	path = submodules/MarkovModels
+	url = git@github.com:joeyshuttleworth/MarkovModels
+[submodule "submodules/auxin_signalling_models"]
+	path = submodules/auxin_signalling_models
+	url = git@github.com:joeyshuttleworth/auxin_signalling_models
+[submodule "submodules/Markov-builder"]
+	path = submodules/Markov-builder
+	url = git@github.com:CardiacModelling/Markov-builder
+	branch = thirty_models
+[submodule "submodules/syncropatch_export"]
+	path = submodules/syncropatch_export
+	url = git@github.com:CardiacModelling/syncropatch_export

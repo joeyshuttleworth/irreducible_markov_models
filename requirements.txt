@@ -1,5 +1,6 @@
 cma>=4.4.0
-git+ssh://git@github.com/joeyshuttleworth/auxin_signalling_models.git
-git+https://github.com/CardiacModelling/Markov-builder@thirty_models
-git+ssh://git@github.com/joeyshuttleworth/MarkovModels
 myokit>=1.37
+submodules/syncropatch_export
+submodules/auxin_signalling_models
+submodules/Markov-builder
+submodules/MarkovModels
