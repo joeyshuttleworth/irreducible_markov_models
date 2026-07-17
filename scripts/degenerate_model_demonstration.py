@@ -119,7 +119,7 @@ def main():
         'd__G__ARF_1__iaa_1': 1.0,
         'd__R': 0.1,
         'd__arf__all': 2.0,
-        'd__iaa_1__x': 1.0,
+        'd__iaa_1__x': 0.0,
         'd__iaa__all': 0.1,
         'k__D__ARF_1__ARF_1': 0.05,
         'k__D__ARF_1__iaa_1': 0.05,
@@ -133,6 +133,7 @@ def main():
         'k__G__R__ARF_1': 0.0001,
         'k__G__ARF_1__iaa_1': 1.0,
         'k__RNA__IAA': 1.0,
+        'k__RNA__ARF': 1.0,
     }
 
     for k,v in new_params.items():
