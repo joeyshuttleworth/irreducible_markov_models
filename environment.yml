@@ -1,9 +1,4 @@
-name: julia-env
+name: juliaenv
 dependencies:
-  - cma>=4.4.0
-  - myokit>=1.37
-  - pip:
-      - submodules/Markov-builder
-      - submodules/MarkovModels
-      - submodules/auxin_signalling_models
-      - submodules/syncropatch_export
+  - python >= 3.12
+  - scikit-build

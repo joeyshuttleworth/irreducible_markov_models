@@ -11,16 +11,21 @@ if ! command -v julia >/dev/null 2>&1; then
 fi
 
 # Create environment if it doesn't exist
-ENV_NAME=julia-env
+ENV_NAME="juliaenv"
 
 python3 -m venv .tmp_venv
 . .tmp_venv/bin/activate
 
 if ! conda env list | awk '{print $1}' | grep -qx "$ENV_NAME"; then
-    conda create -y -n "$ENV_NAME" python=3.11 pip
+    conda env create -n ${ENV_NAME} -f "environment.yml" -y
 fi
 
-PYTHON=$(conda run -n julia-env which python)
+source "$(conda info --base)/etc/profile.d/conda.sh"
+conda activate ${ENV_NAME}
+python3 -m pip install --upgrade pip
+python3 -m pip install -r requirements.txt
+
+PYTHON=$(which python)
 
 julia -e '
 ENV["PYTHON"] = "'"$PYTHON"'"
@@ -29,7 +34,6 @@ Pkg.build("PyCall")
 '
 
 # Install Python package
-conda run -n "$ENV_NAME" pip install your-package
 julia scripts/bifurcation_plot.jl --output paper_output
 
 pip install --upgrade pip
