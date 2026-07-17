@@ -1,6 +1,5 @@
-from auxin_signalling_models.reduced_auxin_signalling_pathway import \
-    ReducedAuxinSignallingPathway as reduced_asp_class
-from auxin_signalling_models import auxin_signalling_pathway as asp_class
+from auxin_signalling_models import ReducedAuxinSignallingPathway as reduced_asp_class
+from auxin_signalling_models import AuxinSignallingPathway as asp_class
 import matplotlib.gridspec as gridspec
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
@@ -67,32 +66,32 @@ def main():
 
     asp_model_r = reduced_asp_class(**kwargs, include_arf_transcription=True)
     asp_model_full = asp_class(**kwargs, include_arf_transcription=True)
-    asp_model_full.remove_state('G__ARF_1')
+    asp_model_full.remove_state_variable_by_name('G__ARF_1', strict=True)
+    asp_model_full.remove_parameter('k__G__ARF_1')
+    asp_model_full.remove_parameter('d__G__ARF_1')
 
-    plot_var_index_red = asp_model_r.get_state_variables().index(plot_var_name)
-    plot_var_index_full = asp_model_full.get_state_variables().index(plot_var_name)
+    plot_var_index_red = asp_model_r.get_state_variable_names(include_promoter_vars=False).index(plot_var_name)
+    plot_var_index_full = asp_model_full.get_state_variable_names().index(plot_var_name)
 
     # Find all parameters related to the promoter-protein dynamics
     empty_set_node = asp_model_full.empty_set_node
-    aux_symbol = asp_model_full.aux_symbol
+    aux_symbol = asp_model_full.auxin_variable_label
 
     pp_reactions = []
-    promoter_symbols = [s for s in asp_model_full.get_state_variables() if s[0]=='G']
+    promoter_symbols = [s for s in asp_model_full.get_state_variable_names() if s[0]=='G']
     for r in asp_model_full._reactions_set:
         if np.all(np.isin(r.reactants + r.products, promoter_symbols)):
             pp_reactions.append(r)
 
     pp_parameters = [s for r in pp_reactions for s in r.fwd_rates + r.bwd_rates]
-    print(asp_model_full.get_default_parameters())
-    print(pp_parameters)
 
     promoter_timeconstant = r"tau_G"
-    asp_model_full.add_transition_rate(promoter_timeconstant, 1.0, "Promoter timeconstant", strict=False)
-    asp_model_full.add_transition_rate("k__RNA__IAA", 1.0, "Rate of IAA production from RNA")
-    asp_model_full.add_transition_rate("k__RNA__ARF", 1.0, "Rate of ARF production from RNA")
+    asp_model_full.add_model_parameter(promoter_timeconstant, 1.0, "Promoter timeconstant", strict=False)
+    asp_model_full.add_model_parameter("k__RNA__IAA", 1.0, "Rate of IAA production from RNA")
+    asp_model_full.add_model_parameter("k__RNA__ARF", 1.0, "Rate of ARF production from RNA")
 
     full_parameter_subs_dict = asp_model_r.parameter_subs_dict.copy()
-    asp_model_full.remove_transition_rate('k__R__iaa_1__iaa_1')
+    asp_model_full.remove_parameter('k__R__iaa_1__iaa_1')
 
     for p in pp_parameters:
         if p in full_parameter_subs_dict:
@@ -104,7 +103,7 @@ def main():
     reduced_ic_dict = asp_model_r.get_default_initial_conditions()
     full_ic_dict = asp_model_full.get_default_initial_conditions()
 
-    jac_func, inhomog_func = asp_model_r.get_promoter_ode_funcs(njitted=True)
+    promoter_vars, steady_state_exprs = asp_model_r.get_promoter_steady_state_exprs(use_cse=False)
 
     # Randomise parameters slightly
     reduced_param_dict = asp_model_r.get_default_parameters()
@@ -112,34 +111,29 @@ def main():
         reduced_param_dict[k] *= 10**np.random.uniform(0, .1)
 
 
-    new_params = {}
-    new_params["k__D__ARF_1__ARF_1"] = 5e-2
-    new_params["d__D__ARF_1__ARF_1"] = 1e-2
-
-    new_params["k__D__ARF_1__iaa_1"] = 5e-2
-    new_params["d__D__ARF_1__iaa_1"] = 1e-2
-
-    new_params["k__D__iaa_1__iaa_1"] = 5e-2
-    new_params["d__D__iaa_1__iaa_1"] = 1e-2
-
-    new_params["d__R"] = 1e-1
-    new_params["k__RNA__IAA"] = 1.0
-    new_params["k__RNA__ARF"] = 1.0
-
-    new_params["d__iaa_1__x"] = 0.0
-
-    new_params["k__G__ARF_1__ARF_1__R__iaa_1"] = 1.0
-
-    new_params["d__arf__all"] = 2.0
-    new_params["d__iaa__all"] = 1.0
-
-    new_params["k__G__ARF_1__iaa_1__R__ARF_1"] = 0.0
-    new_params["k__G__ARF_1__ARF_1__R__ARF_1"] = 1.0
-    new_params["k__G__R__ARF_1"] = 0.0001
-
-    new_params["k__G__ARF_1__ARF_1__R__iaa_1"] = 1.0
-    new_params["k__G__ARF_1__iaa_1__R__iaa_1"] = 0.0
-    new_params["k__G__R__iaa_1"] = 0.0001
+    new_params = {
+        'd__D__ARF_1__ARF_1': 0.01,
+        'd__D__ARF_1__iaa_1': 0.01,
+        'd__D__iaa_1__iaa_1': 0.01,
+        'd__G__ARF_1__ARF_1': 1.0,
+        'd__G__ARF_1__iaa_1': 1.0,
+        'd__R': 0.1,
+        'd__arf__all': 2.0,
+        'd__iaa_1__x': 1.0,
+        'd__iaa__all': 0.1,
+        'k__D__ARF_1__ARF_1': 0.05,
+        'k__D__ARF_1__iaa_1': 0.05,
+        'k__D__iaa_1__iaa_1': 0.15,
+        'k__G__ARF_1__ARF_1': 1.0,
+        'k__G__ARF_1__ARF_1__R__iaa_1': 1.0,
+        'k__G__ARF_1__iaa_1__R__iaa_1': 0.0,
+        'k__G__R__iaa_1': 0.001,
+        'k__G__ARF_1__ARF_1__R__ARF_1': 1.0,
+        'k__G__ARF_1__iaa_1__R__ARF_1': 0.0,
+        'k__G__R__ARF_1': 0.0001,
+        'k__G__ARF_1__iaa_1': 1.0,
+        'k__RNA__IAA': 1.0,
+    }
 
     for k,v in new_params.items():
         if k in reduced_param_dict:
@@ -154,23 +148,18 @@ def main():
 
     params = np.array(list(full_param_dict.values()))
 
-    jac = jac_func(np.array(list(reduced_ic_dict.values())).astype(np.float64),
-                params,
-                np.array([1.0]))
+    # x, p, aux
+    promoter_initial_func = sp.lambdify((reduced_ic_dict.keys(), reduced_param_dict.keys(), [aux_symbol]),
+                                        steady_state_exprs[0][1])
 
-    inhomog = inhomog_func(np.array(list(reduced_ic_dict.values())),
-                            params, [1.0])
-
-    initial_promoter_vars = np.linalg.solve(jac, -inhomog).flatten()
+    initial_promoter_vars = promoter_initial_func(reduced_ic_dict.values(), params, np.array([1.0])).flatten()
     initial_promoter_vars = np.concatenate([[1.0 - initial_promoter_vars.sum()], initial_promoter_vars])
 
-    # We can set the initial conditions to be identical, but this produces less interesting plots:
     for i, p in enumerate(promoter_symbols):
-        # break
         full_ic_dict[p] = initial_promoter_vars[i]
 
     reduced_solver = asp_model_r.make_forward_solver()
-    ts = np.linspace(0, 500.0, 1000)
+    ts = np.linspace(0, 2500, 250)
 
     sol1, succ = reduced_solver(ts, reduced_param_dict, reduced_ic_dict, 1)
     r_odes, free_variables, transition_rates, constraints = asp_model_r.generate_ode_system()
@@ -209,12 +198,20 @@ def main():
     for k, v in reduced_param_dict.items():
         full_param_dict[k] = v
 
-    full_param_dict[promoter_timeconstant] = 1e-10
+    for k,v in full_param_dict.items():
+        if k not in reduced_param_dict.keys():
+            print(f"Setting {k} to 0.0")
+            full_param_dict[k] = 0.0
 
-    full_solver = asp_model_full.make_forward_solver(parameter_subs_dict=full_parameter_subs_dict)
-    sol2, succ = full_solver(ts, full_param_dict, full_ic_dict, 1, strict=False)
+    full_param_dict[promoter_timeconstant] = 1.0
 
-    print(full_ic_dict.keys())
+    full_solver = \
+        asp_model_full.make_forward_solver(parameter_subs_dict=full_parameter_subs_dict)
+
+    sol2, succ = full_solver(ts, full_param_dict, full_ic_dict, 1)
+
+    print("Finished first solve")
+
     fig2 = plt.figure()
     ax = fig2.subplots()
     ax.plot(ts, sol2, label=full_ic_dict.keys())
@@ -230,7 +227,7 @@ def main():
     plt.close(fig2)
 
     rmses = []
-    tau_vals = 10**np.linspace(0, -2, 9)
+    tau_vals = 10**np.linspace(2, -0.5, 11)
 
     parameter_subs_dict = asp_model_r.parameter_subs_dict
     full_param_dict = asp_model_full.get_default_parameters(parameter_subs_dict=parameter_subs_dict)
@@ -240,20 +237,18 @@ def main():
 
     parameter_subs_dict = asp_model_r.parameter_subs_dict
     for i, tau in enumerate(tau_vals):
-        # full_param_dict = asp_model_full.get_default_parameters(parameter_subs_dict=parameter_subs_dict)
-        full_param_dict[promoter_timeconstant] = tau
-        sol2, succ = full_solver(ts, full_param_dict, full_ic_dict, 1)
+        _param_dict = full_param_dict.copy()
+        _param_dict[promoter_timeconstant] = tau
+        sol2, succ = full_solver(ts, _param_dict, full_ic_dict, 1)
         color = cmap(i / len(tau_vals))
         convergence_ax.plot(ts, sol2[:, plot_var_index_full], color=color)
 
-        rmse = np.sqrt(np.mean((sol2[1:, plot_var_index_full] - sol1[1:, plot_var_index_red])**2))
+        rmse = np.sqrt(
+            np.mean((sol2[1:, plot_var_index_full]\
+                     - sol1[1:, plot_var_index_red])**2))
         rmses.append(rmse)
+        print(f"Solved with tau = {tau}")
 
-    # divider = make_axes_locatable(solution_ax)
-    # _cax = divider.append_axes('right', size='10%', pad=0.05)
-    # _cax.set_visible(False)
-    # divider = make_axes_locatable(convergence_ax)
-    # cax = divider.append_axes('right', size='10%', pad=0.05)
     cbar = fig.colorbar(mpl.cm.ScalarMappable(norm=mpl.colors.LogNorm(
         tau_vals.min(), tau_vals.max()),
                                               cmap='rocket'), cax=cax,
@@ -264,14 +259,11 @@ def main():
     cbar.ax.set_aspect("auto")
     cbar.ax.xaxis.set_label_position("bottom")
 
-    # cax.set_axis_off()
     for side in cax.spines:
         cax.spines[side].set_visible(False)
 
     convergence_ax.plot(ts, sol1[:, plot_var_index_red], color='grey', ls='--')
-
     convergence_ax.set_ylabel(r"$R_I$")
-
     convergence_ax.set_xlabel(r"$t$ (s)")
 
     cmap = sns.color_palette('rocket_r', as_cmap=True)
@@ -281,17 +273,15 @@ def main():
 
     _ts = [ts[0], ts[-1]]
     parameter_subs_dict = full_parameter_subs_dict
-    print(parameter_subs_dict)
-    _rhs_func = asp_model_full.generate_rhs_func(parameter_subs_dict=parameter_subs_dict, njitted=True)
+    _rhs_func = asp_model_full.generate_rhs_func(parameter_subs_dict=parameter_subs_dict)
 
-    def wrapped_rhs_func(t, y, p):
-        return _rhs_func(y, p, (1.0,)).flatten()
+    def wrapped_rhs_func(t, y, p, aux):
+        return _rhs_func(y, t, p, aux).flatten()
 
     for i, tau in enumerate(tau_vals):
-        print(tau)
         full_param_dict[promoter_timeconstant] = tau
         p = np.array(list([full_param_dict[k] for k in sorted(full_param_dict.keys())]))
-        sol = scipy.integrate.solve_ivp(wrapped_rhs_func, _ts, x0, args=(p,))
+        sol = scipy.integrate.solve_ivp(wrapped_rhs_func, _ts, x0, args=(p, [1.0]))
         steps_taken = sol.nfev
         steps_taken_list.append(steps_taken)
 
@@ -299,24 +289,16 @@ def main():
     x0 = np.array(list(reduced_ic_dict.values()))
     p = np.array(list(reduced_param_dict.values()))
 
-    _rhs_func = asp_model_r.generate_rhs_func(parameter_subs_dict)
-    pp_jac_func, pp_inhomog_func = asp_model_r.get_promoter_ode_funcs()
-
     print("Solving degenerate model")
 
-    def wrapped_rhs_func(t, y, p):
-        pp_inhomog = pp_inhomog_func(y, p, [1.0])
+    _rhs_func = asp_model_r.generate_rhs_func(parameter_subs_dict=parameter_subs_dict)
 
-        pp_jac = pp_jac_func(y, p, [1.0])
-        pp_inhomog = pp_inhomog_func(y, p, [1.0])
-        state_ss = -np.linalg.solve(pp_jac, pp_inhomog).flatten()
-        G = 1.0 - np.sum(state_ss)
-
-        promoter_vars = np.concatenate([np.array([G]), state_ss])
-        return _rhs_func(y, p, [1.0], promoter_vars).flatten()
+    def wrapped_rhs_func(t, y, p, aux):
+        return _rhs_func(y, t, p, aux).flatten()
 
     print("Counting solver steps for degenerate system")
-    sol = scipy.integrate.solve_ivp(wrapped_rhs_func, y0=x0, t_span=_ts, args=(p,))
+    sol = scipy.integrate.solve_ivp(wrapped_rhs_func, y0=x0, t_span=_ts,
+                                    args=(p, [1.0]))
 
     steps_taken = sol.nfev
 

@@ -7,11 +7,7 @@ using Plots
 using LaTeXStrings
 using ColorSchemes
 
-
 using PyCall
-
-# Import our python package with PyCall
-asp = pyimport("auxin_signalling_models")
 
 default(
     titlefont = font(11),
@@ -22,17 +18,11 @@ default(
     titlelocation=:left
 )
 
+# Import our python package with PyCall
+asp = pyimport("auxin_signalling_models")
 
-s = ArgParseSettings()
-@add_arg_table s begin
-    "--output"
-    default = py"None"
-    help = "Path to store output"
-end
 
-parsed_args = parse_args(ARGS, s)
-
-dir = pwd()                       # Or replace with explicit path
+dir = pwd()                       # Or replace with explicit pat
 sys = pyimport("sys")
 push!(sys."path", dir)
 push!(sys."path", "scripts")
@@ -44,9 +34,23 @@ import sys
 print(sys.path)
 """
 
+# Import our python package with PyCall
+    asp = pyimport("auxin_signalling_models")
+
+s = ArgParseSettings()
+@add_arg_table s begin
+        "--output"
+        default = py"None"
+        help = "Path to store output"
+    end
+
+    parsed_args = parse_args(ARGS, s)
+
+dir = pwd()                       # Or replace with explicit path
+
 setup_output = pyimport("setup_output")
 output_dir = setup_output.setup_output_directory(parsed_args["output"],
-                                                 "bifurcation_plot")
+                                                                                                   "bifurcation_plot")
 output_dir = string(output_dir)
 println(output_dir)
 
@@ -54,21 +58,21 @@ println(output_dir)
 # binding and unbinding
 # MP is denoted ARF_1 and BDL denoted iaa_1. You could change this if you really wanted to
 
+# asp_model = asp.reduced_auxin_signalling_pathway(nARFs=1, nIAAs=1,
+#                                                  include_arf_transcription=true)
 asp_model = asp.ReducedAuxinSignallingPathway(nARFs=1, nIAAs=1,
                                               include_arf_transcription=true)
 
 # Print out default parameter labels
-param_dict = asp_model.get_default_parameters()
+param_dict = asp_model.get_default_parameters(omit_unused=true)
 
 param_labels = sort(collect(keys(param_dict)))
 println(param_labels)
 
-# Get the "substitution" dictionary which can be used to modify the parameterisation
-parameter_subs_dict = asp_model.get_parameter_substitution_dict()
-
 state_labels = asp_model.get_state_variable_names(include_promoter_vars=false)
 
 println("states are $(state_labels)")
+
 
 # Create dictionary of parameters to change
 new_params = Dict()
@@ -87,8 +91,6 @@ new_params["k__RNA__ARF"] = 1.0
 
 new_params["d__iaa_1__x"] = 1.0
 
-new_params["k__G__ARF_1__ARF_1__R__iaa_1"] = 1.0
-
 new_params["d__arf__all"] = 1.0
 new_params["d__iaa__all"] = 0.1
 
@@ -100,9 +102,33 @@ new_params["k__G__ARF_1__ARF_1__R__iaa_1"] = 1.0
 new_params["k__G__ARF_1__iaa_1__R__iaa_1"] = 0.0
 new_params["k__G__R__iaa_1"] = 0.015
 
+# new_params = Dict(
+#     "d__D__ARF_1__ARF_1"=> 0.01,
+#     "d__D__ARF_1__iaa_1"=> 0.01,
+#     "d__D__iaa_1__iaa_1"=> 0.01,
+#     "d__G__ARF_1__ARF_1"=> 1.0,
+#     "d__G__ARF_1__iaa_1"=> 1.0,
+#     "d__R"=> 0.1,
+#     "d__arf__all"=> 2.0,
+#     "d__iaa_1__x"=> 0,
+#     "d__iaa__all"=> 0.1,
+#     "k__D__ARF_1__ARF_1"=> 0.05,
+#     "k__D__ARF_1__iaa_1"=> 0.05,
+#     "k__D__iaa_1__iaa_1"=> 0.05,
+#     "k__G__ARF_1__ARF_1"=> 1.0,
+#     "k__G__ARF_1__ARF_1__R__iaa_1"=> 1.0,
+#     "k__G__ARF_1__iaa_1__R__iaa_1"=> 0.0,
+#     "k__G__R__iaa_1"=> 0.001,
+#     "k__G__ARF_1__ARF_1__R__ARF_1"=> 1.0,
+#     "k__G__ARF_1__iaa_1__R__ARF_1"=> 0.0,
+#     "k__G__R__ARF_1"=> 0.0001,
+#     "k__G__ARF_1__iaa_1"=> 1.0,
+#     "k__RNA__IAA"=> 1.0,
+#     "k__RNA__ARF"=> 1.0,
+# )
+
 
 # Insert new parameters, ensuring that all are present in the model
-
 # Only include parameters that already exist in the model
 for key in keys(new_params)
     if key in keys(param_dict)
@@ -110,6 +136,37 @@ for key in keys(new_params)
     else
         println("WARNING param $(key) is not in param dict")
     end
+end
+
+asp_model_full = asp.AuxinSignallingPathway(nARFs=2, nIAAs=1,
+                                            include_arf_transcription=true)
+# asp_model_full.add_model_parameter("_1lmbda", 10.0, "scaling factor")
+_param_dict = Dict(k=>v for (k, v) in param_dict if k!="_1lmbda")
+
+open(joinpath(output_dir, "parameters.txt"), "w") do io
+    parameters = asp_model.get_parameters()
+    dict = Dict(p.name=>p for p in parameters)
+
+    _param_dict = sort(param_dict, by=(x->hash(dict[x].category)))
+
+    pretty_par_dict = asp_model.generate_pretty_print_parameter_dict()
+
+    pretty_state_dict = asp_model.generate_pretty_print_state_dict()
+
+    pretty_state_dict = Dict(Regex("\\b$(escape_string(k))\\b")=>"\$ $(v) \$"
+                             for (k, v) in pretty_state_dict)
+
+    descs = Dict(k => replace(v.description, collect(pretty_state_dict)...)
+                 for (k, v) in dict)
+
+    s = join(["\$ $(pretty_par_dict[k])\$ & $v & $(descs[k]) \\\\ "
+              for (k, v) in _param_dict],
+             "\n")
+
+    s = replace(s, collect(pretty_par_dict)...)
+    s = replace(s, "ARF_"=>"A_", "iaa_"=>"I_", "__"=>"_")
+
+    write(io, s)
 end
 
 # Generate derivative function using the Python package
@@ -127,7 +184,7 @@ end
 max_p_dict["k__arf__all"] = 1.0
 max_p_dict["d__arf__all"] = 1.0
 
-max_p_dict["d__iaa__all"] = 0.5
+max_p_dict["d__iaa__all"] = 0.075
 max_p_dict["k__D__ARF_1__ARF_1"] = 1e1
 max_p_dict["k__D__ARF_1__iaa_1"] = 1e1
 max_p_dict["k__D__iaa_1__iaa_1"] = 1e1
@@ -141,7 +198,7 @@ push!(par_pp, 10.0)
 println(par_pp)
 
 # Solve system with high and low auxin
-tspan = (0.0, 1e4)
+tspan = (0.0, 1e6)
 z0 = Float64.(collect(values(sort(asp_model.get_default_initial_conditions()))))
 println(z0)
 println(param_dict)
@@ -155,7 +212,7 @@ legend_labels = reshape(state_labels, 1, length(state_labels))
 s = plot(sol, label=legend_labels, legend=true)
 savefig(s, "$(output_dir)/ode_sol.pdf")
 
-print("SS with auxin conc. = 10.0, ")
+print("SS with Auxin conc. = 10.0, ")
 println(Dict(zip(state_labels, z0)))
 
 xlabel = "d__iaa__all"
@@ -200,6 +257,7 @@ end
 
 function arf_rna_func(x, arf_index=nothing)
     arfs = sort([x.name for x in asp_model.arf_variables])
+    # arfs = asp_model.arf_symbols
     ret_vec = [0.0 for a in arfs]
 
     if arf_index === nothing
@@ -226,8 +284,11 @@ z0_2 = [0.003942030760178107, 7.769803257093408e-5,
         0.011156888791130574, 1.6020504429472349, 0.007884061520356214,
         0.007884061520356214, 0.5660477794265649]
 
+p_max = max_p_dict[xlabel]
+p_init = p_max * 0.9
+par_pp[param_index] = p_init
 par_pp[end] = 0.0
-par_pp[param_index] = 0.1
+tspan = (0.0, 1e7)
 
 prob = ODEProblem(f_deriv, z0_2, tspan, par_pp)
 sol = DifferentialEquations.solve(prob)
@@ -235,13 +296,15 @@ z0_2 = sol[:, size(sol, 2)]
 
 println(Dict(zip(state_labels, z0_2)))
 
+par_pp[end] = 1.0
 prob = ODEProblem(f_deriv, z0_2, tspan, par_pp)
 sol = DifferentialEquations.solve(prob)
 
 z0_2 = sol[:, size(sol, 2)]
+println(Dict(zip(state_labels, z0_2)))
+println(Dict(zip(state_labels, z0_2)))
 
-println(Dict(zip(state_labels, z0_2)))
-println(Dict(zip(state_labels, z0_2)))
+par_pp[end] = 0.0
 
 # bifurcation problem
 prob1 = BifurcationProblem(f_deriv, z0, par_pp,
@@ -256,22 +319,18 @@ prob2 = BifurcationProblem(f_deriv, z0_2, par_pp,
                            record_from_solution=recordFromSolution,
                            )
 
-p_max = max_p_dict[xlabel]
-p_init = p_max / 10
-
 dsmax = p_max / 10
-dsmin = p_init * 1e-8
-
+dsmin = p_init * 1e-6
 ds = (dsmax + dsmin) / 2.0
 
-opts_br = ContinuationPar(p_max = p_max, p_min=1e-6,
+opts_br = ContinuationPar(p_max = p_max, p_min=0.01,
                           dsmax=dsmax, dsmin=dsmin, ds = ds,
-                          nev=10, max_steps=10000,
+                          nev=10, max_steps=100000,
                           detect_bifurcation=3)
 
-opts_br2 = ContinuationPar(p_max = p_max, p_min=0.001,
+opts_br2 = ContinuationPar(p_max = p_max, p_min=0.01,
                           dsmax=dsmax, dsmin=dsmin, ds = ds,
-                          nev=10, max_steps=10000,
+                          nev=10, max_steps=100000,
                           detect_bifurcation=3)
 
 diagram1 = bifurcationdiagram(prob1, PALC(),
@@ -290,10 +349,10 @@ println(diagram1)
 println(diagram2)
 
 scene = plot(diagram1; code=(), legend=true,
-             vars=(:param, :iaa_tot))
+             vars=(:param, "iaa_tot"))
 
 dpi = 100
-size_inches = (4.25, 3.5)
+size_inches = (5.25, 4.25)
 size_px = Tuple(round.(Int, dpi .* size_inches))
 
 branch1 = diagram1.γ
@@ -304,24 +363,24 @@ fieldnames(typeof(branch1))
 # hopf_points = [p for p in branch1.specialpoint if string(p.type)=="hopf"]
 # hopf_point = hopf_points[1]
 
+println("Special points", branch1.specialpoint)
 bf_points = [p for p in branch1.specialpoint if string(p.type)=="bp"]
 
-target_p = 0.05
+target_p = 0.0225
 # Assume only 1 special point on branch
 if length(bf_points) > 0
     bf_point = bf_points[1]
-    x1 = branch1.sol[argmin([x.step > bf_point.step ? abs(x.p - target_p) : Inf
+    x1 = branch1.sol[argmin([x.step > bf_points[end].step ? abs(x.p - target_p) : Inf
                              for x in  branch1.sol])]
     # Find point on branch2 which lines up most closely with chosen point on branch1
-    x2 = branch2.sol[argmin([abs(x.p - target_p) for x in branch2.sol])]
+    x2 = branch1.sol[argmin([x.step < bf_points[1].step ? abs(x.p - target_p) : Inf
+                             for x in branch1.sol])]
 else
     # Default to start/end point
     bf_point = branch1.specialpoint[end]
     x1 = branch1.sol[end]
     x2 = branch2.sol[end]
 end
-
-println(x1, x2)
 
 par_pp[param_index] = target_p
 
@@ -337,6 +396,8 @@ scatter!([x1.p, x1.p], [iaa_total_func(x1.x), iaa_total_func(ic_vec[end])],
          markerstrokewidth=1.0,
          color = [c_start, c_end],
          legend = false,
+         grid = false,
+         frame = false
          )
 
 plot!([x1.p, x1.p],
@@ -349,8 +410,6 @@ p1 = plot!(diagram2; code=(),
            ylabel="IAA conc. total",
            xlabel=L"d_I",
            ylims=(0, 1000),
-           # guidefontsize=9,
-           # labelfontsize=9,
            titleloc=:left,
            title=L"\mathbf{a}"
            )
@@ -381,7 +440,7 @@ p2 = plot!(colorbar=false, xtickformatter=:scientific,
 colors = range(0, 1, length=length(ic_vec))  # Normalize to [0,1]
 cmap = cgrad(:viridis, length(ic_vec))
 
-tspan = (0.0, 1e5)
+tspan = (0.0, 1e4)
 
 scene = plot(xlabel="ARF conc. total")
 
@@ -413,9 +472,10 @@ p1_ymax = maximum(ylims(p1))
 p2_ymax = maximum(ylims(p2))
 p3_ymax = maximum(ylims(p3))
 
-p2 = plot!(p2, ylims=(0, p2_ymax), titleloc=:left, title=L"$\mathbf{b}$", xticks=[0, 10^4],
-           xlims=(0, 10^4),
-           xticklabels=[0, L"$10^4$"])
+p2 = plot!(p2, ylims=(0, p2_ymax), titleloc=:left, title=L"$\mathbf{b}$",
+           xticks=[0, 5E4],
+           xlims=(0, 5.5E4),
+           )
 
 p3 = plot!(p3, ylims=(0, p2_ymax), titleloc=:left, title=L"$\mathbf{c}$", xlim=(0, :auto), xrotation=90)
 
@@ -435,5 +495,3 @@ dict = Dict(p => (p in keys(param_dict) ? (pretty_par, param_dict[p]) : (p, "NaN
 
 println(param_dict)
 println(dict)
-
-

@@ -11,7 +11,7 @@ from scipy.integrate import solve_ivp
 from numba import njit
 from markov_builder.example_models import construct_wang_chain
 from markov_builder.example_models import construct_mazhari_chain
-from markovmodels import MarkovModel
+from markovmodels.MarkovModel import MarkovModel
 import myokit as mk
 import matplotlib
 import matplotlib.gridspec as gridspec
