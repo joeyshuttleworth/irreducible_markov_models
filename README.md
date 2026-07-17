@@ -9,9 +9,15 @@ Repository for paper on Irreducible Markov Models in Mathematical Biology.
 * Python >= 3.11
 * Pip
 * [Myokit](https://myokit.org)
-* A Julia installation
+* Julia (it is recommended to use [juliaup](https://github.com/JuliaLang/juliaup) to install the latest version
+* (Conda)[https://docs.conda.io/projects/conda/en/latest/user-guide/install/]
 
-### Installing
+### Installing (Ubuntu Linux 26.04)
+
+Install system packages
+```
+sudo apt-get install python3 build-essential python3-dev python3-setuptools python3-numpy python3-scipy python3-venv
+```
 
 Ensure pip is up-to-date:
 ```python3 -m pip install --upgrade pip```
