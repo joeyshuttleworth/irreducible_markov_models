@@ -228,7 +228,7 @@ def main():
     plt.close(fig2)
 
     rmses = []
-    tau_vals = 10**np.linspace(2, -0.5, 11)
+    tau_vals = 10**np.linspace(1.5, -0.5, 20)
 
     parameter_subs_dict = asp_model_r.parameter_subs_dict
     full_param_dict = asp_model_full.get_default_parameters(parameter_subs_dict=parameter_subs_dict)
