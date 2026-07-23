@@ -120,7 +120,7 @@ def main():
         'd__R': 0.1,
         'd__arf__all': 2.0,
         'd__iaa_1__x': 0.0,
-        'd__iaa__all': 1.25,
+        'd__iaa__all': 0.1,
         'k__D__ARF_1__ARF_1': 0.05,
         'k__D__ARF_1__iaa_1': 0.05,
         'k__D__iaa_1__iaa_1': 0.15,
