@@ -1,6 +1,4 @@
 cma>=4.4.0
 myokit>=1.37
-submodules/syncropatch_export
-submodules/auxin_signalling_models
-submodules/Markov-builder
 submodules/MarkovModels
+submodules/auxin_signalling_models

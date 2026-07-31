@@ -2,6 +2,7 @@
 
 set -e
 
+git submodule update --remote --init
 mkdir -p paper_figures
 
 # Check Julia
@@ -13,6 +14,7 @@ fi
 # Create environment if it doesn't exist
 ENV_NAME="juliaenv"
 
+rm -rf .tmp_venv
 python3 -m venv .tmp_venv
 . .tmp_venv/bin/activate
 
@@ -30,6 +32,13 @@ PYTHON=$(which python)
 julia -e '
 ENV["PYTHON"] = "'"$PYTHON"'"
 using Pkg
+
+Pkg.add("BifurcationKit")
+Pkg.add("DifferentialEquations")
+Pkg.add("ArgParse")
+Pkg.add("ForwardDiff")
+Pkg.build("PyCall")
+
 Pkg.build("PyCall")
 '
 
